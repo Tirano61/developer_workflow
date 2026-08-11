@@ -9,6 +9,14 @@ import '../../features/applications/domain/usecases/get_application.dart';
 import '../../features/applications/domain/usecases/get_applications.dart';
 import '../../features/applications/domain/usecases/update_application.dart';
 import '../../features/applications/presentation/bloc/application_bloc.dart';
+import '../../features/discussions/data/datasources/discussion_remote_data_source.dart';
+import '../../features/discussions/data/repositories/discussion_repository_impl.dart';
+import '../../features/discussions/domain/repositories/discussion_repository.dart';
+import '../../features/discussions/domain/usecases/create_discussion.dart';
+import '../../features/discussions/domain/usecases/get_discussion.dart';
+import '../../features/discussions/domain/usecases/get_discussions.dart';
+import '../../features/discussions/domain/usecases/update_discussion.dart';
+import '../../features/discussions/presentation/bloc/discussion_bloc.dart';
 import '../../features/indicators/data/datasources/indicator_remote_data_source.dart';
 import '../../features/indicators/data/repositories/indicator_repository_impl.dart';
 import '../../features/indicators/domain/repositories/indicator_repository.dart';
@@ -74,7 +82,9 @@ Future<void> configureDependencies() async {
     () => IndicatorRemoteDataSourceImpl(restClient: sl<RestClient>()),
   );
   sl.registerLazySingleton<IndicatorRepository>(
-    () => IndicatorRepositoryImpl(remoteDataSource: sl<IndicatorRemoteDataSource>()),
+    () => IndicatorRepositoryImpl(
+      remoteDataSource: sl<IndicatorRemoteDataSource>(),
+    ),
   );
   sl.registerLazySingleton<GetIndicators>(
     () => GetIndicators(sl<IndicatorRepository>()),
@@ -94,6 +104,35 @@ Future<void> configureDependencies() async {
       getIndicator: sl<GetIndicator>(),
       createIndicator: sl<CreateIndicator>(),
       updateIndicator: sl<UpdateIndicator>(),
+    ),
+  );
+
+  sl.registerLazySingleton<DiscussionRemoteDataSource>(
+    () => DiscussionRemoteDataSourceImpl(restClient: sl<RestClient>()),
+  );
+  sl.registerLazySingleton<DiscussionRepository>(
+    () => DiscussionRepositoryImpl(
+      remoteDataSource: sl<DiscussionRemoteDataSource>(),
+    ),
+  );
+  sl.registerLazySingleton<GetDiscussions>(
+    () => GetDiscussions(sl<DiscussionRepository>()),
+  );
+  sl.registerLazySingleton<GetDiscussion>(
+    () => GetDiscussion(sl<DiscussionRepository>()),
+  );
+  sl.registerLazySingleton<CreateDiscussion>(
+    () => CreateDiscussion(sl<DiscussionRepository>()),
+  );
+  sl.registerLazySingleton<UpdateDiscussion>(
+    () => UpdateDiscussion(sl<DiscussionRepository>()),
+  );
+  sl.registerFactory<DiscussionBloc>(
+    () => DiscussionBloc(
+      getDiscussions: sl<GetDiscussions>(),
+      getDiscussion: sl<GetDiscussion>(),
+      createDiscussion: sl<CreateDiscussion>(),
+      updateDiscussion: sl<UpdateDiscussion>(),
     ),
   );
 }

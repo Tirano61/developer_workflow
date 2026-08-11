@@ -19,25 +19,27 @@ class IntegrationMenuPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Fase 2: Applications + Indicators',
+                  'Fase 3: Applications + Indicators + Discussions',
                   style: Theme.of(context).textTheme.titleLarge,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(
-                    context,
-                    AppRoutes.applications,
-                  ),
+                  onPressed: () =>
+                      Navigator.pushNamed(context, AppRoutes.applications),
                   child: const Text('Probar Applications'),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(
-                    context,
-                    AppRoutes.indicators,
-                  ),
+                  onPressed: () =>
+                      Navigator.pushNamed(context, AppRoutes.indicators),
                   child: const Text('Probar Indicators'),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () =>
+                      Navigator.pushNamed(context, AppRoutes.discussions),
+                  child: const Text('Probar Discussions'),
                 ),
               ],
             ),
