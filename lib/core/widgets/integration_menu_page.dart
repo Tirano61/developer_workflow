@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../features/auth/presentation/bloc/auth_bloc.dart';
+import '../../features/auth/presentation/bloc/auth_event.dart';
 import '../router/app_router.dart';
 
 class IntegrationMenuPage extends StatelessWidget {
@@ -8,7 +11,18 @@ class IntegrationMenuPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Develop Workflow - Integracion REST')),
+      appBar: AppBar(
+        title: const Text('Develop Workflow - Integracion REST'),
+        actions: [
+          IconButton(
+            tooltip: 'Cerrar sesion',
+            onPressed: () {
+              context.read<AuthBloc>().add(const AuthLogoutRequested());
+            },
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),

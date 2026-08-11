@@ -1,20 +1,14 @@
 typedef QueryParams = Map<String, dynamic>;
 
 class RestResponse<T> {
-  const RestResponse({
-    required this.data,
-    required this.statusCode,
-  });
+  const RestResponse({required this.data, required this.statusCode});
 
   final T data;
   final int statusCode;
 }
 
 abstract class RestClient {
-  Future<RestResponse<T>> get<T>(
-    String path, {
-    QueryParams? queryParameters,
-  });
+  Future<RestResponse<T>> get<T>(String path, {QueryParams? queryParameters});
 
   Future<RestResponse<T>> post<T>(
     String path, {

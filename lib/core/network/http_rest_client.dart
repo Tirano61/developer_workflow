@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 import '../error/exceptions.dart';
+import 'auth_token_provider.dart';
 import 'network_config.dart';
 import 'rest_client.dart';
 
@@ -11,12 +12,15 @@ class HttpRestClient implements RestClient {
   HttpRestClient({
     required http.Client client,
     required NetworkConfig config,
-  })  : _client = client,
-        _config = config,
-        _baseUri = Uri.parse(config.baseUrl);
+    required AuthTokenProvider authTokenProvider,
+  }) : _client = client,
+       _config = config,
+       _authTokenProvider = authTokenProvider,
+       _baseUri = Uri.parse(config.baseUrl);
 
   final http.Client _client;
   final NetworkConfig _config;
+  final AuthTokenProvider _authTokenProvider;
   final Uri _baseUri;
 
   @override
@@ -25,7 +29,13 @@ class HttpRestClient implements RestClient {
     QueryParams? queryParameters,
   }) async {
     final uri = _buildUri(path, queryParameters);
-    return _send<T>(() => _client.get(uri, headers: _headers));
+    final requiresAuth = _requiresDevelopWorkflowAuth(path);
+    final headers = await _buildHeaders(path, requiresAuth: requiresAuth);
+
+    return _send<T>(
+      request: () => _client.get(uri, headers: headers),
+      requiresAuth: requiresAuth,
+    );
   }
 
   @override
@@ -35,12 +45,13 @@ class HttpRestClient implements RestClient {
     QueryParams? queryParameters,
   }) async {
     final uri = _buildUri(path, queryParameters);
+    final requiresAuth = _requiresDevelopWorkflowAuth(path);
+    final headers = await _buildHeaders(path, requiresAuth: requiresAuth);
+
     return _send<T>(
-      () => _client.post(
-        uri,
-        headers: _headers,
-        body: _encodeBody(body),
-      ),
+      request: () =>
+          _client.post(uri, headers: headers, body: _encodeBody(body)),
+      requiresAuth: requiresAuth,
     );
   }
 
@@ -51,12 +62,13 @@ class HttpRestClient implements RestClient {
     QueryParams? queryParameters,
   }) async {
     final uri = _buildUri(path, queryParameters);
+    final requiresAuth = _requiresDevelopWorkflowAuth(path);
+    final headers = await _buildHeaders(path, requiresAuth: requiresAuth);
+
     return _send<T>(
-      () => _client.put(
-        uri,
-        headers: _headers,
-        body: _encodeBody(body),
-      ),
+      request: () =>
+          _client.put(uri, headers: headers, body: _encodeBody(body)),
+      requiresAuth: requiresAuth,
     );
   }
 
@@ -67,12 +79,13 @@ class HttpRestClient implements RestClient {
     QueryParams? queryParameters,
   }) async {
     final uri = _buildUri(path, queryParameters);
+    final requiresAuth = _requiresDevelopWorkflowAuth(path);
+    final headers = await _buildHeaders(path, requiresAuth: requiresAuth);
+
     return _send<T>(
-      () => _client.patch(
-        uri,
-        headers: _headers,
-        body: _encodeBody(body),
-      ),
+      request: () =>
+          _client.patch(uri, headers: headers, body: _encodeBody(body)),
+      requiresAuth: requiresAuth,
     );
   }
 
@@ -83,23 +96,39 @@ class HttpRestClient implements RestClient {
     QueryParams? queryParameters,
   }) async {
     final uri = _buildUri(path, queryParameters);
+    final requiresAuth = _requiresDevelopWorkflowAuth(path);
+    final headers = await _buildHeaders(path, requiresAuth: requiresAuth);
+
     return _send<T>(
-      () => _client.delete(
-        uri,
-        headers: _headers,
-        body: _encodeBody(body),
-      ),
+      request: () =>
+          _client.delete(uri, headers: headers, body: _encodeBody(body)),
+      requiresAuth: requiresAuth,
     );
   }
 
-  Future<RestResponse<T>> _send<T>(
-    Future<http.Response> Function() request,
-  ) async {
+  Future<RestResponse<T>> _send<T>({
+    required Future<http.Response> Function() request,
+    required bool requiresAuth,
+  }) async {
     try {
       final response = await request();
       final decoded = _decodeBody(response.body);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (requiresAuth && response.statusCode == 401) {
+          await _authTokenProvider.clearAccessToken();
+          _authTokenProvider.notifySessionExpired();
+          throw const UnauthorizedSessionException(
+            'Tu sesion expiro o no es valida. Inicia sesion nuevamente.',
+          );
+        }
+
+        if (requiresAuth && response.statusCode == 403) {
+          throw const PermissionDeniedException(
+            'Permisos insuficientes para esta accion. Se requiere rol developer.',
+          );
+        }
+
         throw HttpStatusException(
           statusCode: response.statusCode,
           message: _resolveErrorMessage(decoded, response.statusCode),
@@ -116,9 +145,7 @@ class HttpRestClient implements RestClient {
         'No se pudo conectar con el servidor: ${error.message}',
       );
     } on http.ClientException catch (error) {
-      throw NetworkException(
-        'Error de cliente HTTP: ${error.message}',
-      );
+      throw NetworkException('Error de cliente HTTP: ${error.message}');
     } on FormatException catch (error) {
       throw DataParsingException(
         'Respuesta con formato invalido: ${error.message}',
@@ -147,11 +174,36 @@ class HttpRestClient implements RestClient {
     );
   }
 
-  Map<String, String> get _headers {
-    return <String, String>{
+  Future<Map<String, String>> _buildHeaders(
+    String path, {
+    required bool requiresAuth,
+  }) async {
+    final headers = <String, String>{
       'Content-Type': 'application/json',
       ..._config.defaultHeaders,
     };
+
+    if (!requiresAuth) {
+      return headers;
+    }
+
+    final token = await _authTokenProvider.getAccessToken();
+    if (token == null || token.trim().isEmpty) {
+      _authTokenProvider.notifySessionRequired();
+      throw const SessionNotStartedException(
+        'Sesion no iniciada. Inicia sesion para continuar.',
+      );
+    }
+
+    headers['Authorization'] = 'Bearer ${token.trim()}';
+    return headers;
+  }
+
+  bool _requiresDevelopWorkflowAuth(String path) {
+    final normalizedPath = path.trim().toLowerCase();
+
+    return normalizedPath.startsWith('/develop-workflow') ||
+        normalizedPath.startsWith('develop-workflow');
   }
 
   String? _encodeBody(Object? body) {

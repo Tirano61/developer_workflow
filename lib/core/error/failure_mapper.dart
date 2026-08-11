@@ -10,15 +10,32 @@ Failure mapExceptionToFailure(Object error) {
     return ValidationFailure(error.message);
   }
 
+  if (error is SessionNotStartedException) {
+    return SessionRequiredFailure(error.message);
+  }
+
+  if (error is UnauthorizedSessionException) {
+    return UnauthorizedFailure(error.message);
+  }
+
+  if (error is PermissionDeniedException) {
+    return PermissionDeniedFailure(error.message);
+  }
+
   if (error is NetworkException) {
     return NetworkFailure(error.message);
   }
 
   if (error is HttpStatusException) {
-    return ServerFailure(
-      statusCode: error.statusCode,
-      message: error.message,
-    );
+    if (error.statusCode == 401) {
+      return UnauthorizedFailure(error.message);
+    }
+
+    if (error.statusCode == 403) {
+      return PermissionDeniedFailure(error.message);
+    }
+
+    return ServerFailure(statusCode: error.statusCode, message: error.message);
   }
 
   if (error is DataParsingException) {

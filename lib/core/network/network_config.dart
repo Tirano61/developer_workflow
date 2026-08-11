@@ -1,22 +1,11 @@
 class NetworkConfig {
-  const NetworkConfig({
-    required this.baseUrl,
-    this.defaultHeaders = const {},
-  });
+  const NetworkConfig({required this.baseUrl, this.defaultHeaders = const {}});
 
   final String baseUrl;
   final Map<String, String> defaultHeaders;
 
   factory NetworkConfig.fromEnvironment() {
-    const authToken = String.fromEnvironment(
-      'API_AUTH_TOKEN',
-      defaultValue: '',
-    );
-
-    final headers = <String, String>{
-      'Accept': 'application/json',
-      if (authToken.isNotEmpty) 'Authorization': 'Bearer $authToken',
-    };
+    final headers = <String, String>{'Accept': 'application/json'};
 
     return NetworkConfig(
       baseUrl: String.fromEnvironment(

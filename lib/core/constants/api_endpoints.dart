@@ -1,6 +1,8 @@
 class ApiEndpoints {
   const ApiEndpoints._();
 
+  static const String authLogin = '/auth/login';
+
   static const String _developWorkflow = '/develop-workflow';
 
   static const String applications = '$_developWorkflow/applications';
@@ -12,4 +14,10 @@ class ApiEndpoints {
   static String indicatorById(String id) => '$indicators/$id';
 
   static String discussionById(String id) => '$discussions/$id';
+
+  static String discussionMessagesByDiscussionId(String discussionId) =>
+      '${discussionById(discussionId)}/messages';
+
+  static String discussionMessageByIds(String discussionId, String messageId) =>
+      '${discussionMessagesByDiscussionId(discussionId)}/$messageId';
 }

@@ -15,10 +15,8 @@ class NetworkFailure extends Failure {
 }
 
 class ServerFailure extends Failure {
-  const ServerFailure({
-    required this.statusCode,
-    required String message,
-  }) : super(message);
+  const ServerFailure({required this.statusCode, required String message})
+    : super(message);
 
   final int statusCode;
 }
@@ -30,5 +28,27 @@ class ParsingFailure extends Failure {
 }
 
 class ValidationFailure extends Failure {
-  const ValidationFailure([super.message = 'Los datos enviados no son validos.']);
+  const ValidationFailure([
+    super.message = 'Los datos enviados no son validos.',
+  ]);
+}
+
+class SessionRequiredFailure extends Failure {
+  const SessionRequiredFailure([
+    super.message = 'Sesion no iniciada. Inicia sesion para continuar.',
+  ]);
+}
+
+class UnauthorizedFailure extends Failure {
+  const UnauthorizedFailure([
+    super.message =
+        'Tu sesion expiro o no es valida. Inicia sesion nuevamente.',
+  ]);
+}
+
+class PermissionDeniedFailure extends Failure {
+  const PermissionDeniedFailure([
+    super.message =
+        'Permisos insuficientes para esta accion. Se requiere rol developer.',
+  ]);
 }

@@ -15,7 +15,7 @@ abstract class IndicatorRemoteDataSource {
 
 class IndicatorRemoteDataSourceImpl implements IndicatorRemoteDataSource {
   IndicatorRemoteDataSourceImpl({required RestClient restClient})
-      : _restClient = restClient;
+    : _restClient = restClient;
 
   final RestClient _restClient;
 
@@ -57,9 +57,11 @@ class IndicatorRemoteDataSourceImpl implements IndicatorRemoteDataSource {
       );
     }
 
+    final payload = model.toJson()..remove('id');
+
     final response = await _restClient.patch<Object?>(
       ApiEndpoints.indicatorById(Uri.encodeComponent(id)),
-      body: model.toJson(),
+      body: payload,
     );
     final map = _extractEntityMap(response.data, key: 'indicator');
     return IndicatorModel.fromJson(map);

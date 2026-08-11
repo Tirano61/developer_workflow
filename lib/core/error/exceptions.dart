@@ -29,3 +29,15 @@ class DataParsingException extends DataException {
 class ValidationException extends DataException {
   const ValidationException(super.message);
 }
+
+class SessionNotStartedException extends DataException {
+  const SessionNotStartedException(super.message);
+}
+
+class UnauthorizedSessionException extends DataException {
+  const UnauthorizedSessionException(super.message);
+}
+
+class PermissionDeniedException extends DataException {
+  const PermissionDeniedException(super.message);
+}
