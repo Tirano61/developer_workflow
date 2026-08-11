@@ -28,6 +28,12 @@ abstract class RestClient {
     QueryParams? queryParameters,
   });
 
+  Future<RestResponse<T>> patch<T>(
+    String path, {
+    Object? body,
+    QueryParams? queryParameters,
+  });
+
   Future<RestResponse<T>> delete<T>(
     String path, {
     Object? body,
