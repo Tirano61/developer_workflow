@@ -15,7 +15,7 @@ abstract class ApplicationRemoteDataSource {
 
 class ApplicationRemoteDataSourceImpl implements ApplicationRemoteDataSource {
   ApplicationRemoteDataSourceImpl({required RestClient restClient})
-      : _restClient = restClient;
+    : _restClient = restClient;
 
   final RestClient _restClient;
 
@@ -57,9 +57,11 @@ class ApplicationRemoteDataSourceImpl implements ApplicationRemoteDataSource {
       );
     }
 
+    final payload = model.toJson()..remove('id');
+
     final response = await _restClient.patch<Object?>(
       ApiEndpoints.applicationById(Uri.encodeComponent(id)),
-      body: model.toJson(),
+      body: payload,
     );
     final map = _extractEntityMap(response.data, key: 'application');
     return ApplicationModel.fromJson(map);

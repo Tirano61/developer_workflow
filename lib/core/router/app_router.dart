@@ -3,15 +3,18 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../features/applications/presentation/bloc/application_bloc.dart';
 import '../../features/applications/presentation/pages/applications_page.dart';
+import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/discussions/domain/entities/discussion.dart';
 import '../../features/discussions/presentation/bloc/discussion_bloc.dart';
 import '../../features/discussions/presentation/pages/discussion_detail_page.dart';
 import '../../features/discussions/presentation/pages/discussion_editor_page.dart';
 import '../../features/discussions/presentation/pages/discussion_route_args.dart';
 import '../../features/discussions/presentation/pages/discussions_page.dart';
+import '../../features/discussion_messages/presentation/bloc/discussion_message_bloc.dart';
 import '../../features/indicators/presentation/bloc/indicator_bloc.dart';
 import '../../features/indicators/presentation/pages/indicators_page.dart';
 import '../di/service_locator.dart';
+import '../network/auth_token_provider.dart';
 import '../widgets/integration_menu_page.dart';
 import '../widgets/app_placeholder_page.dart';
 
@@ -30,18 +33,17 @@ class AppRoutes {
 class AppRouter {
   const AppRouter._();
 
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+  static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
       case AppRoutes.login:
-        return MaterialPageRoute<void>(
-          settings: settings,
-          builder: (_) => const AppPlaceholderPage(
-            title: 'Login',
-            description: 'Pantalla base preparada para autenticacion.',
-          ),
-        );
+        return _buildLoginRoute(settings);
       case AppRoutes.applications:
-        return MaterialPageRoute<void>(
+        return _buildProtectedRoute(
           settings: settings,
           builder: (_) => BlocProvider<ApplicationBloc>(
             create: (_) => sl<ApplicationBloc>(),
@@ -49,7 +51,7 @@ class AppRouter {
           ),
         );
       case AppRoutes.indicators:
-        return MaterialPageRoute<void>(
+        return _buildProtectedRoute(
           settings: settings,
           builder: (_) => BlocProvider<IndicatorBloc>(
             create: (_) => sl<IndicatorBloc>(),
@@ -57,7 +59,7 @@ class AppRouter {
           ),
         );
       case AppRoutes.discussions:
-        return MaterialPageRoute<void>(
+        return _buildProtectedRoute(
           settings: settings,
           builder: (_) => BlocProvider<DiscussionBloc>(
             create: (_) => sl<DiscussionBloc>(),
@@ -77,19 +79,29 @@ class AppRouter {
           );
         }
 
-        return MaterialPageRoute<void>(
+        return _buildProtectedRoute(
           settings: settings,
-          builder: (_) => BlocProvider<DiscussionBloc>(
-            create: (_) => sl<DiscussionBloc>(),
+          builder: (_) => MultiBlocProvider(
+            providers: [
+              BlocProvider<DiscussionBloc>(create: (_) => sl<DiscussionBloc>()),
+              BlocProvider<DiscussionMessageBloc>(
+                create: (_) => sl<DiscussionMessageBloc>(),
+              ),
+            ],
             child: DiscussionDetailPage(discussionId: discussionId),
           ),
         );
       case AppRoutes.discussionCreate:
         final editorArgs = _readEditorArgs(settings.arguments);
-        return MaterialPageRoute<void>(
+        return _buildProtectedRoute(
           settings: settings,
-          builder: (_) => BlocProvider<DiscussionBloc>(
-            create: (_) => sl<DiscussionBloc>(),
+          builder: (_) => MultiBlocProvider(
+            providers: [
+              BlocProvider<DiscussionBloc>(create: (_) => sl<DiscussionBloc>()),
+              BlocProvider<DiscussionMessageBloc>(
+                create: (_) => sl<DiscussionMessageBloc>(),
+              ),
+            ],
             child: DiscussionEditorPage(
               initialDiscussion: editorArgs.discussion,
               discussionId: editorArgs.discussionId,
@@ -97,7 +109,7 @@ class AppRouter {
           ),
         );
       case AppRoutes.home:
-        return MaterialPageRoute<void>(
+        return _buildProtectedRoute(
           settings: settings,
           builder: (_) => const IntegrationMenuPage(),
         );
@@ -110,6 +122,42 @@ class AppRouter {
           ),
         );
     }
+  }
+
+  static Route<dynamic> _buildLoginRoute(RouteSettings settings) {
+    if (_hasAuthenticatedSession()) {
+      return MaterialPageRoute<void>(
+        settings: settings,
+        builder: (_) => const IntegrationMenuPage(),
+      );
+    }
+
+    return MaterialPageRoute<void>(
+      settings: settings,
+      builder: (_) => const LoginPage(),
+    );
+  }
+
+  static Route<dynamic> _buildProtectedRoute({
+    required RouteSettings settings,
+    required WidgetBuilder builder,
+  }) {
+    if (!_hasAuthenticatedSession()) {
+      return MaterialPageRoute<void>(
+        settings: settings,
+        builder: (_) => const LoginPage(),
+      );
+    }
+
+    return MaterialPageRoute<void>(settings: settings, builder: builder);
+  }
+
+  static bool _hasAuthenticatedSession() {
+    if (!sl.isRegistered<AuthTokenProvider>()) {
+      return false;
+    }
+
+    return sl<AuthTokenProvider>().hasAccessToken;
   }
 
   static String? _readDiscussionId(Object? args) {
