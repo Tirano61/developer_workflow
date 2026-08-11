@@ -6,10 +6,7 @@ void main() {
   testWidgets('App bootstrap smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
 
-    expect(find.text('Develop Workflow'), findsWidgets);
-    expect(
-      find.text('Base de frontend lista para crecer por features.'),
-      findsOneWidget,
-    );
+    expect(find.text('Develop Workflow - Integracion REST'), findsOneWidget);
+    expect(find.text('Fase 2: Applications + Indicators'), findsOneWidget);
   });
 }
