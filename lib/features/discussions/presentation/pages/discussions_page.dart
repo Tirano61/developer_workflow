@@ -2,6 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../applications/domain/entities/application.dart';
+import '../../../applications/presentation/bloc/application_bloc.dart';
+import '../../../applications/presentation/bloc/application_event.dart';
+import '../../../applications/presentation/bloc/application_state.dart';
+import '../../../indicators/domain/entities/indicator.dart';
+import '../../../indicators/presentation/bloc/indicator_bloc.dart';
+import '../../../indicators/presentation/bloc/indicator_event.dart';
+import '../../../indicators/presentation/bloc/indicator_state.dart';
+import '../../../tags/domain/entities/tag.dart';
+import '../../../tags/presentation/bloc/tag_bloc.dart';
+import '../../../tags/presentation/bloc/tag_event.dart';
+import '../../../tags/presentation/bloc/tag_state.dart';
 import '../../domain/entities/discussion.dart';
 import '../../domain/entities/discussion_filters.dart';
 import '../bloc/discussion_bloc.dart';
@@ -25,11 +37,10 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
   final TextEditingController _limitController = TextEditingController(
     text: '20',
   );
-  final TextEditingController _applicationIdsController =
-      TextEditingController();
-  final TextEditingController _indicatorIdsController = TextEditingController();
-  final TextEditingController _tagIdsController = TextEditingController();
-  final TextEditingController _createdByController = TextEditingController();
+
+  final Set<String> _selectedApplicationIds = <String>{};
+  final Set<String> _selectedIndicatorIds = <String>{};
+  final Set<String> _selectedTagIds = <String>{};
 
   DiscussionType? _selectedType;
   DiscussionRecordStatus? _selectedStatus;
@@ -38,6 +49,9 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
   @override
   void initState() {
     super.initState();
+    context.read<ApplicationBloc>().add(const LoadApplicationsEvent());
+    context.read<IndicatorBloc>().add(const LoadIndicatorsEvent());
+    context.read<TagBloc>().add(const LoadTagsEvent());
     _requestList();
   }
 
@@ -46,10 +60,6 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     _idController.dispose();
     _pageController.dispose();
     _limitController.dispose();
-    _applicationIdsController.dispose();
-    _indicatorIdsController.dispose();
-    _tagIdsController.dispose();
-    _createdByController.dispose();
     super.dispose();
   }
 
@@ -74,6 +84,9 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
           }
         },
         builder: (context, state) {
+          final applicationState = context.watch<ApplicationBloc>().state;
+          final indicatorState = context.watch<IndicatorBloc>().state;
+          final tagState = context.watch<TagBloc>().state;
           final bloc = context.read<DiscussionBloc>();
 
           return ListView(
@@ -179,36 +192,54 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _applicationIdsController,
-                decoration: const InputDecoration(
-                  labelText: 'applicationIds (CSV UUID)',
-                  border: OutlineInputBorder(),
+              _buildMultiSelectSection<Application>(
+                title: 'Filtro Applications',
+                subtitle: 'Filtra por una o varias applications.',
+                items: applicationState.applications,
+                selectedIds: _selectedApplicationIds,
+                isLoading: applicationState.status == ApplicationStatus.loading,
+                errorMessage: applicationState.status == ApplicationStatus.error
+                    ? applicationState.errorMessage
+                    : null,
+                idOf: (item) => item.id,
+                labelOf: (item) => item.name,
+                onRetry: () => context.read<ApplicationBloc>().add(
+                  const LoadApplicationsEvent(),
                 ),
+                onToggle: _toggleApplication,
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _indicatorIdsController,
-                decoration: const InputDecoration(
-                  labelText: 'indicatorIds (CSV UUID)',
-                  border: OutlineInputBorder(),
+              _buildMultiSelectSection<Indicator>(
+                title: 'Filtro Indicators',
+                subtitle: 'Filtra por uno o varios indicators.',
+                items: indicatorState.indicators,
+                selectedIds: _selectedIndicatorIds,
+                isLoading: indicatorState.status == IndicatorStatus.loading,
+                errorMessage: indicatorState.status == IndicatorStatus.error
+                    ? indicatorState.errorMessage
+                    : null,
+                idOf: (item) => item.id,
+                labelOf: (item) => item.name,
+                onRetry: () => context.read<IndicatorBloc>().add(
+                  const LoadIndicatorsEvent(),
                 ),
+                onToggle: _toggleIndicator,
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _tagIdsController,
-                decoration: const InputDecoration(
-                  labelText: 'tagIds (CSV UUID)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _createdByController,
-                decoration: const InputDecoration(
-                  labelText: 'createdBy (UUID usuario)',
-                  border: OutlineInputBorder(),
-                ),
+              _buildMultiSelectSection<Tag>(
+                title: 'Filtro Tags',
+                subtitle: 'Filtra por tags de la discussion.',
+                items: tagState.tags,
+                selectedIds: _selectedTagIds,
+                isLoading: tagState.status == TagStatus.loading,
+                errorMessage: tagState.status == TagStatus.error
+                    ? tagState.errorMessage
+                    : null,
+                idOf: (item) => item.id,
+                labelOf: (item) => item.name,
+                onRetry: () =>
+                    context.read<TagBloc>().add(const LoadTagsEvent()),
+                onToggle: _toggleTag,
               ),
               const SizedBox(height: 4),
               SwitchListTile.adaptive(
@@ -393,6 +424,114 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     );
   }
 
+  Widget _buildMultiSelectSection<T>({
+    required String title,
+    required String subtitle,
+    required List<T> items,
+    required Set<String> selectedIds,
+    required bool isLoading,
+    required String? errorMessage,
+    required String? Function(T item) idOf,
+    required String Function(T item) labelOf,
+    required VoidCallback onRetry,
+    required void Function(String id, bool selected) onToggle,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(subtitle),
+            const SizedBox(height: 8),
+            if (isLoading && items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(),
+              ),
+            if (errorMessage != null && errorMessage.trim().isNotEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    errorMessage,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: onRetry,
+                    child: const Text('Reintentar carga'),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            if (!isLoading && items.isEmpty)
+              const Text('No hay opciones disponibles.'),
+            if (items.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: items
+                    .map((item) {
+                      final id = idOf(item)?.trim();
+                      if (id == null || id.isEmpty) {
+                        return null;
+                      }
+
+                      final label = labelOf(item).trim();
+                      final selected = selectedIds.contains(id);
+
+                      return FilterChip(
+                        label: Text(label.isEmpty ? id : label),
+                        selected: selected,
+                        onSelected: (value) => onToggle(id, value),
+                      );
+                    })
+                    .whereType<Widget>()
+                    .toList(growable: false),
+              ),
+            const SizedBox(height: 8),
+            Text('Seleccionados: ${selectedIds.length}'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _toggleApplication(String id, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedApplicationIds.add(id);
+      } else {
+        _selectedApplicationIds.remove(id);
+      }
+    });
+  }
+
+  void _toggleIndicator(String id, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedIndicatorIds.add(id);
+      } else {
+        _selectedIndicatorIds.remove(id);
+      }
+    });
+  }
+
+  void _toggleTag(String id, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedTagIds.add(id);
+      } else {
+        _selectedTagIds.remove(id);
+      }
+    });
+  }
+
   void _requestList() {
     final filters = _buildFilters();
     context.read<DiscussionBloc>().add(LoadDiscussionsEvent(filters: filters));
@@ -404,10 +543,9 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
       limit: _parsePositiveInt(_limitController.text, fallback: 20),
       type: _selectedType,
       status: _selectedStatus,
-      applicationIds: _parseCsvIds(_applicationIdsController.text),
-      indicatorIds: _parseCsvIds(_indicatorIdsController.text),
-      tagIds: _parseCsvIds(_tagIdsController.text),
-      createdBy: _nullableText(_createdByController.text),
+      applicationIds: _sortedIds(_selectedApplicationIds),
+      indicatorIds: _sortedIds(_selectedIndicatorIds),
+      tagIds: _sortedIds(_selectedTagIds),
       mine: _mine,
     );
   }
@@ -416,13 +554,12 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     setState(() {
       _pageController.text = '1';
       _limitController.text = '20';
-      _applicationIdsController.clear();
-      _indicatorIdsController.clear();
-      _tagIdsController.clear();
-      _createdByController.clear();
       _selectedType = null;
       _selectedStatus = null;
       _mine = false;
+      _selectedApplicationIds.clear();
+      _selectedIndicatorIds.clear();
+      _selectedTagIds.clear();
     });
 
     _requestList();
@@ -436,18 +573,14 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     return parsed;
   }
 
-  List<String> _parseCsvIds(String value) {
-    return value
-        .split(',')
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toSet()
+  List<String> _sortedIds(Set<String> values) {
+    final list = values
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
         .toList(growable: false);
-  }
 
-  String? _nullableText(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
+    final sorted = List<String>.from(list)..sort();
+    return sorted;
   }
 
   void _showMessage(BuildContext context, String message) {

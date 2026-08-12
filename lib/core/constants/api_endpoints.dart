@@ -7,6 +7,7 @@ class ApiEndpoints {
 
   static const String applications = '$_developWorkflow/applications';
   static const String indicators = '$_developWorkflow/indicators';
+  static const String tags = '$_developWorkflow/tags';
   static const String discussions = '$_developWorkflow/discussions';
 
   static String applicationById(String id) => '$applications/$id';

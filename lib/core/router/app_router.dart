@@ -13,6 +13,8 @@ import '../../features/discussions/presentation/pages/discussions_page.dart';
 import '../../features/discussion_messages/presentation/bloc/discussion_message_bloc.dart';
 import '../../features/indicators/presentation/bloc/indicator_bloc.dart';
 import '../../features/indicators/presentation/pages/indicators_page.dart';
+import '../../features/tags/presentation/bloc/tag_bloc.dart';
+import '../../features/tags/presentation/pages/tags_page.dart';
 import '../di/service_locator.dart';
 import '../network/auth_token_provider.dart';
 import '../widgets/integration_menu_page.dart';
@@ -25,6 +27,7 @@ class AppRoutes {
   static const String login = '/login';
   static const String applications = '/applications';
   static const String indicators = '/indicators';
+  static const String tags = '/tags';
   static const String discussions = '/discussions';
   static const String discussionDetail = '/discussions/detail';
   static const String discussionCreate = '/discussions/create';
@@ -58,11 +61,26 @@ class AppRouter {
             child: const IndicatorsPage(),
           ),
         );
+      case AppRoutes.tags:
+        return _buildProtectedRoute(
+          settings: settings,
+          builder: (_) => BlocProvider<TagBloc>(
+            create: (_) => sl<TagBloc>(),
+            child: const TagsPage(),
+          ),
+        );
       case AppRoutes.discussions:
         return _buildProtectedRoute(
           settings: settings,
-          builder: (_) => BlocProvider<DiscussionBloc>(
-            create: (_) => sl<DiscussionBloc>(),
+          builder: (_) => MultiBlocProvider(
+            providers: [
+              BlocProvider<DiscussionBloc>(create: (_) => sl<DiscussionBloc>()),
+              BlocProvider<ApplicationBloc>(
+                create: (_) => sl<ApplicationBloc>(),
+              ),
+              BlocProvider<IndicatorBloc>(create: (_) => sl<IndicatorBloc>()),
+              BlocProvider<TagBloc>(create: (_) => sl<TagBloc>()),
+            ],
             child: const DiscussionsPage(),
           ),
         );
@@ -101,6 +119,11 @@ class AppRouter {
               BlocProvider<DiscussionMessageBloc>(
                 create: (_) => sl<DiscussionMessageBloc>(),
               ),
+              BlocProvider<ApplicationBloc>(
+                create: (_) => sl<ApplicationBloc>(),
+              ),
+              BlocProvider<IndicatorBloc>(create: (_) => sl<IndicatorBloc>()),
+              BlocProvider<TagBloc>(create: (_) => sl<TagBloc>()),
             ],
             child: DiscussionEditorPage(
               initialDiscussion: editorArgs.discussion,
