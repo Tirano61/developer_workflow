@@ -41,6 +41,12 @@ import '../../features/indicators/domain/usecases/get_indicator.dart';
 import '../../features/indicators/domain/usecases/get_indicators.dart';
 import '../../features/indicators/domain/usecases/update_indicator.dart';
 import '../../features/indicators/presentation/bloc/indicator_bloc.dart';
+import '../../features/tags/data/datasources/tag_remote_data_source.dart';
+import '../../features/tags/data/repositories/tag_repository_impl.dart';
+import '../../features/tags/domain/repositories/tag_repository.dart';
+import '../../features/tags/domain/usecases/create_tag.dart';
+import '../../features/tags/domain/usecases/get_tags.dart';
+import '../../features/tags/presentation/bloc/tag_bloc.dart';
 import '../network/auth_token_provider.dart';
 import '../network/http_rest_client.dart';
 import '../network/network_config.dart';
@@ -169,6 +175,18 @@ Future<void> configureDependencies() async {
       createIndicator: sl<CreateIndicator>(),
       updateIndicator: sl<UpdateIndicator>(),
     ),
+  );
+
+  sl.registerLazySingleton<TagRemoteDataSource>(
+    () => TagRemoteDataSourceImpl(restClient: sl<RestClient>()),
+  );
+  sl.registerLazySingleton<TagRepository>(
+    () => TagRepositoryImpl(remoteDataSource: sl<TagRemoteDataSource>()),
+  );
+  sl.registerLazySingleton<GetTags>(() => GetTags(sl<TagRepository>()));
+  sl.registerLazySingleton<CreateTag>(() => CreateTag(sl<TagRepository>()));
+  sl.registerFactory<TagBloc>(
+    () => TagBloc(getTags: sl<GetTags>(), createTag: sl<CreateTag>()),
   );
 
   sl.registerLazySingleton<DiscussionRemoteDataSource>(

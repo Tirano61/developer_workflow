@@ -229,8 +229,16 @@ class HttpRestClient implements RestClient {
   String _resolveErrorMessage(Object? decoded, int statusCode) {
     if (decoded is Map<String, dynamic>) {
       final value = decoded['message'] ?? decoded['error'] ?? decoded['detail'];
-      if (value is String && value.trim().isNotEmpty) {
-        return value;
+      final resolved = _resolveErrorValue(value);
+      if (resolved != null) {
+        return resolved;
+      }
+    }
+
+    if (decoded is List) {
+      final resolved = _resolveErrorValue(decoded);
+      if (resolved != null) {
+        return resolved;
       }
     }
 
@@ -239,6 +247,45 @@ class HttpRestClient implements RestClient {
     }
 
     return 'La solicitud HTTP fallo con estado $statusCode.';
+  }
+
+  String? _resolveErrorValue(Object? value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is String) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    if (value is List) {
+      final parts = value
+          .map(_resolveErrorValue)
+          .whereType<String>()
+          .where((part) => part.trim().isNotEmpty)
+          .toList(growable: false);
+
+      if (parts.isEmpty) {
+        return null;
+      }
+
+      return parts.join(' | ');
+    }
+
+    if (value is Map<String, dynamic>) {
+      final nested = value['message'] ?? value['error'] ?? value['detail'];
+      final resolvedNested = _resolveErrorValue(nested);
+      if (resolvedNested != null) {
+        return resolvedNested;
+      }
+
+      final asString = value.toString().trim();
+      return asString.isEmpty ? null : asString;
+    }
+
+    final asString = value.toString().trim();
+    return asString.isEmpty ? null : asString;
   }
 
   Map<String, String>? _normalizeQueryParameters(QueryParams? queryParameters) {

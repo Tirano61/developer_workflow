@@ -33,7 +33,7 @@ class IntegrationMenuPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Fase 3: Applications + Indicators + Discussions',
+                  'Fase 4: Applications + Indicators + Tags + Discussions',
                   style: Theme.of(context).textTheme.titleLarge,
                   textAlign: TextAlign.center,
                 ),
@@ -48,6 +48,11 @@ class IntegrationMenuPage extends StatelessWidget {
                   onPressed: () =>
                       Navigator.pushNamed(context, AppRoutes.indicators),
                   child: const Text('Probar Indicators'),
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: () => Navigator.pushNamed(context, AppRoutes.tags),
+                  child: const Text('Crear/Probar Tags'),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton(
