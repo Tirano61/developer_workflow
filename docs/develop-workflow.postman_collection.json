@@ -118,6 +118,12 @@
 					"name": "List active applications",
 					"request": {
 						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
 						"url": "{{DWbaseUrl}}/develop-workflow/applications"
 					}
 				},
@@ -138,6 +144,12 @@
 					"name": "Get active application by id",
 					"request": {
 						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
 						"url": "{{DWbaseUrl}}/develop-workflow/applications/{{applicationId}}"
 					}
 				},
@@ -226,6 +238,12 @@
 					"name": "List active indicators",
 					"request": {
 						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
 						"url": "{{DWbaseUrl}}/develop-workflow/indicators"
 					}
 				},
@@ -246,6 +264,12 @@
 					"name": "Get active indicator by id",
 					"request": {
 						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
 						"url": "{{DWbaseUrl}}/develop-workflow/indicators/{{indicatorId}}"
 					}
 				},
@@ -360,6 +384,12 @@
 					"name": "List indicators by application",
 					"request": {
 						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
 						"url": "{{DWbaseUrl}}/develop-workflow/applications/{{applicationId}}/indicators"
 					}
 				},
@@ -367,6 +397,12 @@
 					"name": "List applications by indicator",
 					"request": {
 						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
 						"url": "{{DWbaseUrl}}/develop-workflow/indicators/{{indicatorId}}/applications"
 					}
 				}
@@ -391,7 +427,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"type\": \"ERROR\",\n  \"title\": \"Problema en app\",\n  \"applicationIds\": [\"{{applicationId}}\"],\n  \"indicatorIds\": [\"{{indicatorId}}\"],\n  \"tagIds\": [\"{{tagId}}\"]\n}"
+							"raw": "{\n  \"type\": \"ERROR\",\n  \"title\": \"Problema en app\",\n  \"initialMessageContent\": \"Descripcion inicial del problema\",\n  \"applicationIds\": [\"{{applicationId}}\"],\n  \"indicatorIds\": [\"{{indicatorId}}\"],\n  \"tagIds\": [\"{{tagId}}\"]\n}"
 						},
 						"url": "{{DWbaseUrl}}/develop-workflow/discussions"
 					}
@@ -462,6 +498,39 @@
 							"raw": "{\n  \"type\": \"TEXT\",\n  \"content\": \"Necesitamos revisar este caso en produccion\"\n}"
 						},
 						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/messages"
+					}
+				},
+				{
+					"name": "Create discussion attachment message (auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "type",
+									"value": "IMAGE",
+									"type": "text"
+								},
+								{
+									"key": "content",
+									"value": "Adjunto para analizar el problema",
+									"type": "text"
+								},
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/messages/files"
 					}
 				},
 				{

@@ -51,6 +51,28 @@ class DiscussionMessageRepositoryImpl implements DiscussionMessageRepository {
   }
 
   @override
+  Future<Result<DiscussionMessage>> createAttachmentMessage({
+    required String discussionId,
+    required DiscussionMessageType type,
+    required String fileName,
+    required List<int> fileBytes,
+    String? content,
+  }) async {
+    try {
+      final model = await _remoteDataSource.createAttachmentMessage(
+        discussionId: discussionId,
+        type: type,
+        fileName: fileName,
+        fileBytes: fileBytes,
+        content: content,
+      );
+      return Success<DiscussionMessage>(model.toEntity());
+    } catch (error) {
+      return FailureResult<DiscussionMessage>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
   Future<Result<DiscussionMessage>> updateMessage({
     required String discussionId,
     required String messageId,

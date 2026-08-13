@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -161,6 +163,94 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
         content: content,
       ),
     );
+  }
+
+  Future<void> _pickAndSendAttachment() async {
+    final selection = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: true,
+    );
+
+    if (!mounted || selection == null || selection.files.isEmpty) {
+      return;
+    }
+
+    final picked = selection.files.first;
+    final fileName = picked.name.trim();
+    final bytes = picked.bytes;
+
+    if (fileName.isEmpty || bytes == null || bytes.isEmpty) {
+      _showMessage('No se pudo leer el archivo seleccionado.');
+      return;
+    }
+
+    final type = _inferAttachmentType(fileName);
+    final optionalContent = _messageController.text.trim();
+
+    _pendingComposerClear = true;
+    context.read<DiscussionMessageBloc>().add(
+      CreateDiscussionAttachmentMessageEvent(
+        discussionId: widget.discussionId,
+        type: type,
+        fileName: fileName,
+        fileBytes: bytes,
+        content: optionalContent.isEmpty ? null : optionalContent,
+      ),
+    );
+  }
+
+  DiscussionMessageType _inferAttachmentType(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    final extension = dotIndex < 0
+        ? ''
+        : fileName.substring(dotIndex + 1).toLowerCase();
+
+    const imageExtensions = <String>{
+      'png',
+      'jpg',
+      'jpeg',
+      'gif',
+      'webp',
+      'bmp',
+      'heic',
+      'heif',
+      'svg',
+    };
+
+    const audioExtensions = <String>{
+      'mp3',
+      'wav',
+      'm4a',
+      'aac',
+      'ogg',
+      'opus',
+      'flac',
+      'amr',
+    };
+
+    const videoExtensions = <String>{
+      'mp4',
+      'mov',
+      'avi',
+      'mkv',
+      'webm',
+      'm4v',
+      '3gp',
+    };
+
+    if (imageExtensions.contains(extension)) {
+      return DiscussionMessageType.image;
+    }
+
+    if (audioExtensions.contains(extension)) {
+      return DiscussionMessageType.audio;
+    }
+
+    if (videoExtensions.contains(extension)) {
+      return DiscussionMessageType.video;
+    }
+
+    return DiscussionMessageType.file;
   }
 
   Future<void> _editMessage(DiscussionMessage message) async {
@@ -440,7 +530,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
                       ),
                   ],
                 ),
-                Text(message.content),
+                _buildMessageBody(message),
                 if (isUpdatingThisMessage) ...[
                   const SizedBox(height: 8),
                   const LinearProgressIndicator(),
@@ -451,6 +541,202 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildMessageBody(DiscussionMessage message) {
+    switch (message.type) {
+      case DiscussionMessageType.text:
+        final content = message.content.trim();
+        return Text(content.isEmpty ? '(sin contenido)' : content);
+      case DiscussionMessageType.image:
+        return _buildImageAttachmentBody(message);
+      case DiscussionMessageType.audio:
+      case DiscussionMessageType.video:
+      case DiscussionMessageType.file:
+      case DiscussionMessageType.unknown:
+        return _buildGenericAttachmentBody(message);
+    }
+  }
+
+  Widget _buildImageAttachmentBody(DiscussionMessage message) {
+    final url = message.attachmentUrl?.trim();
+    final caption = message.content.trim();
+    final hasUrl = url != null && url.isNotEmpty;
+    final previewWidth = MediaQuery.sizeOf(context).width < 480 ? 140.0 : 180.0;
+    const previewHeight = 120.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hasUrl)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: InkWell(
+              onTap: () => _openAttachmentUrl(url),
+              child: SizedBox(
+                width: previewWidth,
+                height: previewHeight,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        color: Theme.of(context).colorScheme.surface,
+                        child: const Text('No se pudo previsualizar la imagen.'),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          )
+        else
+          const Text('Imagen adjunta sin URL disponible.'),
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(caption),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildGenericAttachmentBody(DiscussionMessage message) {
+    final url = message.attachmentUrl?.trim();
+    final hasUrl = url != null && url.isNotEmpty;
+    final displayName =
+        message.attachmentName?.trim().isNotEmpty == true
+        ? message.attachmentName!.trim()
+        : 'Adjunto ${_messageTypeLabel(message.type)}';
+
+    final detailParts = <String>[
+      if (message.attachmentMimeType != null &&
+          message.attachmentMimeType!.trim().isNotEmpty)
+        message.attachmentMimeType!.trim(),
+      if (message.attachmentSizeBytes != null && message.attachmentSizeBytes! >= 0)
+        _formatFileSize(message.attachmentSizeBytes!),
+    ];
+
+    final caption = message.content.trim();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(_messageTypeIcon(message.type)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(displayName, overflow: TextOverflow.ellipsis),
+                    if (detailParts.isNotEmpty)
+                      Text(
+                        detailParts.join(' · '),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                  ],
+                ),
+              ),
+              if (hasUrl)
+                IconButton(
+                  tooltip: 'Abrir adjunto',
+                  onPressed: () => _openAttachmentUrl(url),
+                  icon: const Icon(Icons.open_in_new),
+                ),
+            ],
+          ),
+        ),
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(caption),
+        ],
+      ],
+    );
+  }
+
+  IconData _messageTypeIcon(DiscussionMessageType type) {
+    switch (type) {
+      case DiscussionMessageType.image:
+        return Icons.image_outlined;
+      case DiscussionMessageType.audio:
+        return Icons.audiotrack_outlined;
+      case DiscussionMessageType.video:
+        return Icons.videocam_outlined;
+      case DiscussionMessageType.file:
+        return Icons.insert_drive_file_outlined;
+      case DiscussionMessageType.text:
+        return Icons.notes_outlined;
+      case DiscussionMessageType.unknown:
+        return Icons.help_outline;
+    }
+  }
+
+  String _messageTypeLabel(DiscussionMessageType type) {
+    switch (type) {
+      case DiscussionMessageType.text:
+        return 'texto';
+      case DiscussionMessageType.image:
+        return 'imagen';
+      case DiscussionMessageType.audio:
+        return 'audio';
+      case DiscussionMessageType.video:
+        return 'video';
+      case DiscussionMessageType.file:
+        return 'archivo';
+      case DiscussionMessageType.unknown:
+        return 'desconocido';
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+
+    final kib = bytes / 1024;
+    if (kib < 1024) {
+      return '${kib.toStringAsFixed(1)} KB';
+    }
+
+    final mib = kib / 1024;
+    if (mib < 1024) {
+      return '${mib.toStringAsFixed(1)} MB';
+    }
+
+    final gib = mib / 1024;
+    return '${gib.toStringAsFixed(1)} GB';
+  }
+
+  Future<void> _openAttachmentUrl(String rawUrl) async {
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null) {
+      _showMessage('URL de adjunto invalida.');
+      return;
+    }
+
+    if (!await canLaunchUrl(uri)) {
+      _showMessage('No se pudo abrir el adjunto.');
+      return;
+    }
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched) {
+      _showMessage('No se pudo abrir el adjunto.');
+    }
   }
 
   Widget _buildComposer() {
@@ -487,6 +773,15 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
                           hintText: 'Escribir mensaje...',
                           border: OutlineInputBorder(),
                         ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 48,
+                      width: 48,
+                      child: OutlinedButton(
+                        onPressed: isDisabled ? null : _pickAndSendAttachment,
+                        child: const Icon(Icons.attach_file),
                       ),
                     ),
                     const SizedBox(width: 8),

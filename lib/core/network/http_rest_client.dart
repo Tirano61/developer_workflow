@@ -56,6 +56,40 @@ class HttpRestClient implements RestClient {
   }
 
   @override
+  Future<RestResponse<T>> postMultipart<T>(
+    String path, {
+    required Map<String, String> fields,
+    required String fileField,
+    required List<int> fileBytes,
+    required String fileName,
+    QueryParams? queryParameters,
+  }) async {
+    final uri = _buildUri(path, queryParameters);
+    final requiresAuth = _requiresDevelopWorkflowAuth(path);
+    final headers = await _buildHeaders(path, requiresAuth: requiresAuth);
+    headers.remove('Content-Type');
+
+    return _send<T>(
+      request: () async {
+        final request = http.MultipartRequest('POST', uri);
+        request.headers.addAll(headers);
+        request.fields.addAll(fields);
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            fileField,
+            fileBytes,
+            filename: fileName,
+          ),
+        );
+
+        final streamed = await _client.send(request);
+        return http.Response.fromStream(streamed);
+      },
+      requiresAuth: requiresAuth,
+    );
+  }
+
+  @override
   Future<RestResponse<T>> put<T>(
     String path, {
     Object? body,

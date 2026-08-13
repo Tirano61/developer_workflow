@@ -5,6 +5,8 @@ import '../../domain/entities/discussion_message.dart';
 import '../../domain/entities/discussion_message_page.dart';
 import '../../domain/usecases/create_discussion_message.dart' as create_uc;
 import '../../domain/usecases/get_discussion_messages.dart' as get_uc;
+import '../../domain/usecases/upload_discussion_message_attachment.dart'
+  as upload_attachment_uc;
 import '../../domain/usecases/update_discussion_message.dart' as update_uc;
 import 'discussion_message_event.dart';
 import 'discussion_message_state.dart';
@@ -14,19 +16,27 @@ class DiscussionMessageBloc
   DiscussionMessageBloc({
     required get_uc.GetDiscussionMessages getDiscussionMessages,
     required create_uc.CreateDiscussionMessage createDiscussionMessage,
+    required upload_attachment_uc.UploadDiscussionMessageAttachment
+    uploadDiscussionMessageAttachment,
     required update_uc.UpdateDiscussionMessage updateDiscussionMessage,
   }) : _getDiscussionMessages = getDiscussionMessages,
        _createDiscussionMessage = createDiscussionMessage,
+       _uploadDiscussionMessageAttachment = uploadDiscussionMessageAttachment,
        _updateDiscussionMessage = updateDiscussionMessage,
        super(const DiscussionMessageState()) {
     on<LoadDiscussionMessagesEvent>(_onLoadDiscussionMessages);
     on<LoadMoreDiscussionMessagesEvent>(_onLoadMoreDiscussionMessages);
     on<CreateDiscussionMessageEvent>(_onCreateDiscussionMessage);
+    on<CreateDiscussionAttachmentMessageEvent>(
+      _onCreateDiscussionAttachmentMessage,
+    );
     on<UpdateDiscussionMessageEvent>(_onUpdateDiscussionMessage);
   }
 
   final get_uc.GetDiscussionMessages _getDiscussionMessages;
   final create_uc.CreateDiscussionMessage _createDiscussionMessage;
+  final upload_attachment_uc.UploadDiscussionMessageAttachment
+  _uploadDiscussionMessageAttachment;
   final update_uc.UpdateDiscussionMessage _updateDiscussionMessage;
 
   Future<void> _onLoadDiscussionMessages(
@@ -280,6 +290,112 @@ class DiscussionMessageBloc
           clearUpdatingMessageId: true,
         ),
       );
+    }
+  }
+
+  Future<void> _onCreateDiscussionAttachmentMessage(
+    CreateDiscussionAttachmentMessageEvent event,
+    Emitter<DiscussionMessageState> emit,
+  ) async {
+    if (!_isAttachmentType(event.type)) {
+      emit(
+        state.copyWith(
+          status: DiscussionMessageStatus.error,
+          errorMessage:
+              'El tipo de adjunto debe ser IMAGE, AUDIO, VIDEO o FILE.',
+          isSending: false,
+        ),
+      );
+      return;
+    }
+
+    final fileName = event.fileName.trim();
+    if (fileName.isEmpty || event.fileBytes.isEmpty) {
+      emit(
+        state.copyWith(
+          status: DiscussionMessageStatus.error,
+          errorMessage: 'Debes seleccionar un archivo valido para adjuntar.',
+          isSending: false,
+        ),
+      );
+      return;
+    }
+
+    emit(state.copyWith(isSending: true, errorMessage: ''));
+
+    final result = await _uploadDiscussionMessageAttachment(
+      upload_attachment_uc.UploadDiscussionMessageAttachmentParams(
+        discussionId: event.discussionId,
+        type: event.type,
+        fileName: fileName,
+        fileBytes: event.fileBytes,
+        content: event.content?.trim(),
+      ),
+    );
+
+    if (result is Success<DiscussionMessage>) {
+      final created = result.data;
+      final currentData = state.activeDiscussionId == event.discussionId
+          ? state.page.data
+          : const <DiscussionMessage>[];
+
+      final alreadyExists = currentData.any((item) => item.id == created.id);
+      final mergedData = _mergeByIdAndSort(currentData, [created]);
+
+      final currentLimit = state.activeDiscussionId == event.discussionId
+          ? state.page.limit
+          : 50;
+      final currentTotal = state.activeDiscussionId == event.discussionId
+          ? state.page.total
+          : 0;
+      var mergedTotal = alreadyExists ? currentTotal : currentTotal + 1;
+      if (mergedTotal < mergedData.length) {
+        mergedTotal = mergedData.length;
+      }
+
+      final totalPages = mergedTotal == 0
+          ? 0
+          : (mergedTotal / currentLimit).ceil();
+
+      emit(
+        state.copyWith(
+          status: DiscussionMessageStatus.success,
+          activeDiscussionId: event.discussionId,
+          page: DiscussionMessagePage(
+            data: mergedData,
+            page: 1,
+            limit: currentLimit,
+            total: mergedTotal,
+            totalPages: totalPages,
+          ),
+          errorMessage: '',
+          isSending: false,
+        ),
+      );
+      return;
+    }
+
+    if (result is FailureResult<DiscussionMessage>) {
+      emit(
+        state.copyWith(
+          status: DiscussionMessageStatus.error,
+          errorMessage: result.failure.message,
+          isSending: false,
+        ),
+      );
+    }
+  }
+
+  bool _isAttachmentType(DiscussionMessageType type) {
+    switch (type) {
+      case DiscussionMessageType.image:
+      case DiscussionMessageType.audio:
+      case DiscussionMessageType.video:
+      case DiscussionMessageType.file:
+        return true;
+      case DiscussionMessageType.text:
+      case DiscussionMessageType.unknown:
+        return false;
     }
   }
 
