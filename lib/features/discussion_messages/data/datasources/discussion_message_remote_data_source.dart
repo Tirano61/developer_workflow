@@ -18,6 +18,14 @@ abstract class DiscussionMessageRemoteDataSource {
     required String content,
   });
 
+  Future<DiscussionMessageModel> createAttachmentMessage({
+    required String discussionId,
+    required DiscussionMessageType type,
+    required String fileName,
+    required List<int> fileBytes,
+    String? content,
+  });
+
   Future<DiscussionMessageModel> updateMessage({
     required String discussionId,
     required String messageId,
@@ -72,6 +80,48 @@ class DiscussionMessageRemoteDataSourceImpl
         Uri.encodeComponent(discussionId),
       ),
       body: payload.toCreateJson(),
+    );
+
+    return DiscussionMessageModel.fromPayload(
+      response.data,
+      discussionIdFallback: discussionId,
+    );
+  }
+
+  @override
+  Future<DiscussionMessageModel> createAttachmentMessage({
+    required String discussionId,
+    required DiscussionMessageType type,
+    required String fileName,
+    required List<int> fileBytes,
+    String? content,
+  }) async {
+    final normalizedFileName = fileName.trim();
+    if (normalizedFileName.isEmpty) {
+      throw const ValidationException(
+        'El nombre del archivo es obligatorio para subir adjuntos.',
+      );
+    }
+
+    if (fileBytes.isEmpty) {
+      throw const ValidationException(
+        'El archivo seleccionado no contiene datos.',
+      );
+    }
+
+    final payload = DiscussionMessageModel.forAttachmentUpload(
+      type: type,
+      content: content,
+    );
+
+    final response = await _restClient.postMultipart<Object?>(
+      ApiEndpoints.discussionMessageFilesByDiscussionId(
+        Uri.encodeComponent(discussionId),
+      ),
+      fields: payload.toAttachmentFormFields(),
+      fileField: 'file',
+      fileBytes: fileBytes,
+      fileName: normalizedFileName,
     );
 
     return DiscussionMessageModel.fromPayload(

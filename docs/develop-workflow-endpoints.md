@@ -4,14 +4,13 @@ Base URL:
 - http://localhost:3000/api/v1
 
 Autenticacion:
-- Publico: no requiere token.
 - Usuario autenticado: requiere JWT Bearer valido.
 - Developer: requiere JWT Bearer con rol developer.
 
 ## Applications
 
 ### GET /develop-workflow/applications
-- Auth: Publico
+- Auth: Usuario autenticado
 - Descripcion: Lista solo applications activas.
 
 ### GET /develop-workflow/applications/all
@@ -19,7 +18,7 @@ Autenticacion:
 - Descripcion: Lista applications activas e inactivas.
 
 ### GET /develop-workflow/applications/:id
-- Auth: Publico
+- Auth: Usuario autenticado
 - Descripcion: Obtiene una application activa por id.
 
 ### GET /develop-workflow/applications/all/:id
@@ -58,7 +57,7 @@ Autenticacion:
 ## Indicators
 
 ### GET /develop-workflow/indicators
-- Auth: Publico
+- Auth: Usuario autenticado
 - Descripcion: Lista solo indicators activos.
 
 ### GET /develop-workflow/indicators/all
@@ -66,7 +65,7 @@ Autenticacion:
 - Descripcion: Lista indicators activos e inactivos.
 
 ### GET /develop-workflow/indicators/:id
-- Auth: Publico
+- Auth: Usuario autenticado
 - Descripcion: Obtiene un indicator activo por id.
 
 ### GET /develop-workflow/indicators/all/:id
@@ -113,23 +112,24 @@ Autenticacion:
 - Descripcion: Elimina asociacion entre application e indicator.
 
 ### GET /develop-workflow/applications/:applicationId/indicators
-- Auth: Publico
+- Auth: Usuario autenticado
 - Descripcion: Lista indicators activos asociados a una application.
 
 ### GET /develop-workflow/indicators/:indicatorId/applications
-- Auth: Publico
+- Auth: Usuario autenticado
 - Descripcion: Lista applications activas asociadas a un indicator.
 
 ## Discussions
 
 ### POST /develop-workflow/discussions
 - Auth: Usuario autenticado
-- Descripcion: Crea una discussion con estado inicial NEW y createdBy tomado del token.
+- Descripcion: Crea una discussion con estado inicial NEW y createdBy tomado del token. Requiere initialMessageContent y crea el primer DiscussionMessage de tipo TEXT en la misma transaccion.
 - Body:
 ```json
 {
   "type": "ERROR",
   "title": "Problema en la app remota",
+  "initialMessageContent": "Descripcion inicial del problema",
   "applicationIds": ["{{applicationId}}"],
   "indicatorIds": ["{{indicatorId}}"],
   "tagIds": ["{{tagId}}"]
@@ -210,7 +210,7 @@ Autenticacion:
 
 ### POST /develop-workflow/discussions/:discussionId/messages
 - Auth: Usuario autenticado
-- Descripcion: Crea un mensaje dentro de la discussion usando author del token.
+- Descripcion: Crea un mensaje TEXT dentro de la discussion usando author del token.
 - Body:
 ```json
 {
@@ -219,13 +219,22 @@ Autenticacion:
 }
 ```
 
+### POST /develop-workflow/discussions/:discussionId/messages/files
+- Auth: Usuario autenticado
+- Content-Type: multipart/form-data
+- Descripcion: Sube un archivo a Cloudinary y crea un DiscussionMessage de tipo IMAGE, AUDIO, VIDEO o FILE.
+- Form-data:
+  - type (IMAGE | AUDIO | VIDEO | FILE)
+  - file (binary)
+  - content (opcional, texto adicional)
+
 ### GET /develop-workflow/discussions/:discussionId/messages
 - Auth: Usuario autenticado
 - Descripcion: Lista mensajes de la discussion en orden cronologico ascendente.
 - Query params opcionales:
   - page (default 1)
   - limit (default 50)
-  - type (TEXT)
+  - type (TEXT | IMAGE | AUDIO | VIDEO | FILE)
 
 ### PATCH /develop-workflow/discussions/:discussionId/messages/:messageId
 - Auth: Usuario autenticado

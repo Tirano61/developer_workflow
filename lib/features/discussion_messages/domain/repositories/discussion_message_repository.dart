@@ -16,6 +16,14 @@ abstract class DiscussionMessageRepository {
     required String content,
   });
 
+  Future<Result<DiscussionMessage>> createAttachmentMessage({
+    required String discussionId,
+    required DiscussionMessageType type,
+    required String fileName,
+    required List<int> fileBytes,
+    String? content,
+  });
+
   Future<Result<DiscussionMessage>> updateMessage({
     required String discussionId,
     required String messageId,

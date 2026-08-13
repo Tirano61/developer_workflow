@@ -42,6 +42,22 @@ class CreateDiscussionMessageEvent extends DiscussionMessageEvent {
   final DiscussionMessageType type;
 }
 
+class CreateDiscussionAttachmentMessageEvent extends DiscussionMessageEvent {
+  const CreateDiscussionAttachmentMessageEvent({
+    required this.discussionId,
+    required this.type,
+    required this.fileName,
+    required this.fileBytes,
+    this.content,
+  });
+
+  final String discussionId;
+  final DiscussionMessageType type;
+  final String fileName;
+  final List<int> fileBytes;
+  final String? content;
+}
+
 class UpdateDiscussionMessageEvent extends DiscussionMessageEvent {
   const UpdateDiscussionMessageEvent({
     required this.discussionId,

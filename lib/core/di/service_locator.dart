@@ -31,6 +31,7 @@ import '../../features/discussion_messages/data/repositories/discussion_message_
 import '../../features/discussion_messages/domain/repositories/discussion_message_repository.dart';
 import '../../features/discussion_messages/domain/usecases/create_discussion_message.dart';
 import '../../features/discussion_messages/domain/usecases/get_discussion_messages.dart';
+import '../../features/discussion_messages/domain/usecases/upload_discussion_message_attachment.dart';
 import '../../features/discussion_messages/domain/usecases/update_discussion_message.dart';
 import '../../features/discussion_messages/presentation/bloc/discussion_message_bloc.dart';
 import '../../features/indicators/data/datasources/indicator_remote_data_source.dart';
@@ -232,6 +233,9 @@ Future<void> configureDependencies() async {
   sl.registerLazySingleton<CreateDiscussionMessage>(
     () => CreateDiscussionMessage(sl<DiscussionMessageRepository>()),
   );
+  sl.registerLazySingleton<UploadDiscussionMessageAttachment>(
+    () => UploadDiscussionMessageAttachment(sl<DiscussionMessageRepository>()),
+  );
   sl.registerLazySingleton<UpdateDiscussionMessage>(
     () => UpdateDiscussionMessage(sl<DiscussionMessageRepository>()),
   );
@@ -239,6 +243,7 @@ Future<void> configureDependencies() async {
     () => DiscussionMessageBloc(
       getDiscussionMessages: sl<GetDiscussionMessages>(),
       createDiscussionMessage: sl<CreateDiscussionMessage>(),
+      uploadDiscussionMessageAttachment: sl<UploadDiscussionMessageAttachment>(),
       updateDiscussionMessage: sl<UpdateDiscussionMessage>(),
     ),
   );

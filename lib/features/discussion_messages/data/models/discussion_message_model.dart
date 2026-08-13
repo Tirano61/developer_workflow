@@ -50,6 +50,11 @@ class DiscussionMessageModel {
     this.author,
     required this.type,
     required this.content,
+    this.attachmentUrl,
+    this.attachmentName,
+    this.attachmentMimeType,
+    this.attachmentSizeBytes,
+    this.attachmentPublicId,
     this.createdAt,
     this.updatedAt,
   });
@@ -59,6 +64,11 @@ class DiscussionMessageModel {
   final DiscussionMessageAuthorModel? author;
   final DiscussionMessageType type;
   final String content;
+  final String? attachmentUrl;
+  final String? attachmentName;
+  final String? attachmentMimeType;
+  final int? attachmentSizeBytes;
+  final String? attachmentPublicId;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -87,21 +97,23 @@ class DiscussionMessageModel {
       );
     }
 
-    final content = _readString(json, const ['content', 'message', 'text']);
-    if (content == null || content.isEmpty) {
-      throw const DataParsingException(
-        'Discussion message content is missing in backend payload.',
-      );
-    }
+    final type = DiscussionMessageTypeX.fromApiValue(
+      _readString(json, const ['type']),
+    );
+    final content = _readMessageContent(json, type: type);
+    final attachment = _readAttachmentData(json);
 
     return DiscussionMessageModel(
       id: id,
       discussionId: discussionId,
       author: author,
-      type: DiscussionMessageTypeX.fromApiValue(
-        _readString(json, const ['type']),
-      ),
+      type: type,
       content: content,
+      attachmentUrl: attachment.url,
+      attachmentName: attachment.name,
+      attachmentMimeType: attachment.mimeType,
+      attachmentSizeBytes: attachment.sizeBytes,
+      attachmentPublicId: attachment.publicId,
       createdAt: _readDateTime(json, const ['createdAt', 'created_at']),
       updatedAt: _readDateTime(json, const ['updatedAt', 'updated_at']),
     );
@@ -121,6 +133,13 @@ class DiscussionMessageModel {
     );
   }
 
+  factory DiscussionMessageModel.forAttachmentUpload({
+    required DiscussionMessageType type,
+    String? content,
+  }) {
+    return DiscussionMessageModel(type: type, content: content ?? '');
+  }
+
   factory DiscussionMessageModel.fromEntity(DiscussionMessage entity) {
     return DiscussionMessageModel(
       id: entity.id,
@@ -128,6 +147,11 @@ class DiscussionMessageModel {
       author: DiscussionMessageAuthorModel.fromEntity(entity.author),
       type: entity.type,
       content: entity.content,
+      attachmentUrl: entity.attachmentUrl,
+      attachmentName: entity.attachmentName,
+      attachmentMimeType: entity.attachmentMimeType,
+      attachmentSizeBytes: entity.attachmentSizeBytes,
+      attachmentPublicId: entity.attachmentPublicId,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     );
@@ -182,6 +206,16 @@ class DiscussionMessageModel {
     };
   }
 
+  Map<String, String> toAttachmentFormFields() {
+    final normalizedType = _sanitizeUploadType(type);
+    final fields = <String, String>{'type': normalizedType.apiValue};
+    final normalizedContent = content.trim();
+    if (normalizedContent.isNotEmpty) {
+      fields['content'] = normalizedContent;
+    }
+    return fields;
+  }
+
   Map<String, dynamic> toUpdateJson() {
     return <String, dynamic>{'content': content.trim()};
   }
@@ -205,13 +239,153 @@ class DiscussionMessageModel {
       id: resolvedId,
       discussionId: resolvedDiscussionId,
       author: resolvedAuthor.toEntity(),
-      type: type == DiscussionMessageType.unknown
-          ? DiscussionMessageType.text
-          : type,
+      type: type,
       content: content,
+      attachmentUrl: attachmentUrl,
+      attachmentName: attachmentName,
+      attachmentMimeType: attachmentMimeType,
+      attachmentSizeBytes: attachmentSizeBytes,
+      attachmentPublicId: attachmentPublicId,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );
+  }
+
+  static DiscussionMessageType _sanitizeUploadType(DiscussionMessageType type) {
+    switch (type) {
+      case DiscussionMessageType.image:
+      case DiscussionMessageType.audio:
+      case DiscussionMessageType.video:
+      case DiscussionMessageType.file:
+        return type;
+      case DiscussionMessageType.text:
+      case DiscussionMessageType.unknown:
+        return DiscussionMessageType.file;
+    }
+  }
+
+  static String _readMessageContent(
+    Map<String, dynamic> json, {
+    required DiscussionMessageType type,
+  }) {
+    final value = _readFirst(json, const ['content', 'message', 'text']);
+    if (value == null) {
+      if (type == DiscussionMessageType.text) {
+        throw const DataParsingException(
+          'Discussion message content is missing in backend payload.',
+        );
+      }
+      return '';
+    }
+
+    final parsed = value.toString();
+    if (type == DiscussionMessageType.text && parsed.trim().isEmpty) {
+      throw const DataParsingException(
+        'Discussion message content is missing in backend payload.',
+      );
+    }
+
+    return parsed;
+  }
+
+  static _AttachmentData _readAttachmentData(Map<String, dynamic> json) {
+    final nested = _readAttachmentMap(json);
+    final maps = <Map<String, dynamic>>[?nested, json];
+
+    final url = _readStringFromAny(
+      maps,
+      const [
+        'fileUrl',
+        'file_url',
+        'secureUrl',
+        'secure_url',
+        'url',
+        'mediaUrl',
+        'media_url',
+      ],
+    );
+
+    final name = _readStringFromAny(
+      maps,
+      const [
+        'fileName',
+        'file_name',
+        'originalName',
+        'original_name',
+        'filename',
+        'name',
+      ],
+    );
+
+    final mimeType = _readStringFromAny(
+      maps,
+      const ['mimeType', 'mime_type', 'contentType', 'content_type'],
+    );
+
+    final publicId = _readStringFromAny(
+      maps,
+      const [
+        'cloudinaryPublicId',
+        'cloudinary_public_id',
+        'publicId',
+        'public_id',
+      ],
+    );
+
+    final sizeBytes = _readIntFromAny(
+      maps,
+      const ['fileSize', 'file_size', 'size', 'bytes'],
+    );
+
+    return _AttachmentData(
+      url: url,
+      name: name,
+      mimeType: mimeType,
+      sizeBytes: sizeBytes,
+      publicId: publicId,
+    );
+  }
+
+  static Map<String, dynamic>? _readAttachmentMap(Map<String, dynamic> json) {
+    final raw = _readFirst(
+      json,
+      const ['attachment', 'file', 'media', 'asset', 'upload'],
+    );
+    if (raw is Map<String, dynamic>) {
+      return raw;
+    }
+
+    if (raw is Map) {
+      return raw.map((key, value) => MapEntry(key.toString(), value));
+    }
+
+    return null;
+  }
+
+  static String? _readStringFromAny(
+    List<Map<String, dynamic>> maps,
+    List<String> keys,
+  ) {
+    for (final map in maps) {
+      final value = _readString(map, keys);
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  static int? _readIntFromAny(
+    List<Map<String, dynamic>> maps,
+    List<String> keys,
+  ) {
+    for (final map in maps) {
+      final value = _readInt(map, keys);
+      if (value != null) {
+        return value;
+      }
+    }
+    return null;
   }
 
   static String? _readDiscussionId(
@@ -261,6 +435,22 @@ class DiscussionMessageModel {
 
     return null;
   }
+}
+
+class _AttachmentData {
+  const _AttachmentData({
+    this.url,
+    this.name,
+    this.mimeType,
+    this.sizeBytes,
+    this.publicId,
+  });
+
+  final String? url;
+  final String? name;
+  final String? mimeType;
+  final int? sizeBytes;
+  final String? publicId;
 }
 
 class DiscussionMessagePageModel {

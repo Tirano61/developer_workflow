@@ -16,6 +16,15 @@ abstract class RestClient {
     QueryParams? queryParameters,
   });
 
+  Future<RestResponse<T>> postMultipart<T>(
+    String path, {
+    required Map<String, String> fields,
+    required String fileField,
+    required List<int> fileBytes,
+    required String fileName,
+    QueryParams? queryParameters,
+  });
+
   Future<RestResponse<T>> put<T>(
     String path, {
     Object? body,

@@ -19,6 +19,9 @@ class ApiEndpoints {
   static String discussionMessagesByDiscussionId(String discussionId) =>
       '${discussionById(discussionId)}/messages';
 
+  static String discussionMessageFilesByDiscussionId(String discussionId) =>
+      '${discussionMessagesByDiscussionId(discussionId)}/files';
+
   static String discussionMessageByIds(String discussionId, String messageId) =>
       '${discussionMessagesByDiscussionId(discussionId)}/$messageId';
 }
