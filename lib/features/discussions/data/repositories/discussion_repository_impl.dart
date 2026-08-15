@@ -40,6 +40,16 @@ class DiscussionRepositoryImpl implements DiscussionRepository {
   }
 
   @override
+  Future<Result<DiscussionReadState>> markDiscussionAsRead(String discussionId) async {
+    try {
+      final model = await _remoteDataSource.markDiscussionAsRead(discussionId);
+      return Success<DiscussionReadState>(model.toEntity());
+    } catch (error) {
+      return FailureResult<DiscussionReadState>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
   Future<Result<Discussion>> createDiscussion(Discussion discussion) async {
     try {
       final model = DiscussionModel.fromEntity(discussion);

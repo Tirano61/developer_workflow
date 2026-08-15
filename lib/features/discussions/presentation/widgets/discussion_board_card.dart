@@ -27,8 +27,17 @@ class DiscussionBoardCard extends StatelessWidget {
     final title = discussion.title.trim().isEmpty
         ? '(Sin titulo)'
         : discussion.title.trim();
+    final theme = Theme.of(context);
+    final unreadCardColor = discussion.isUnread
+        ? Color.lerp(
+            theme.colorScheme.surface,
+            theme.colorScheme.primaryContainer,
+            0.32,
+          )
+        : null;
 
     return Card(
+      color: unreadCardColor,
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: onOpen,
@@ -37,7 +46,44 @@ class DiscussionBoardCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: Theme.of(context).textTheme.titleSmall),
+              Row(
+                children: [
+                  if (discussion.isUnread)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(
+                        Icons.brightness_1,
+                        size: 10,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: (discussion.isUnread
+                              ? Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                )
+                              : Theme.of(context).textTheme.titleSmall),
+                    ),
+                  ),
+                  if (discussion.isUnread)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Nuevo',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,

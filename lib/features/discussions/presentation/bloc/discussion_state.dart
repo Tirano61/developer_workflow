@@ -16,6 +16,7 @@ class DiscussionState {
     this.isLoadingAssignableDevelopers = false,
     this.isUpdatingStatus = false,
     this.isUpdatingAssignments = false,
+    this.markingAsReadDiscussionIds = const <String>{},
     this.operationDiscussionId,
     this.errorMessage = '',
     this.operationMessage = '',
@@ -30,6 +31,7 @@ class DiscussionState {
   final bool isLoadingAssignableDevelopers;
   final bool isUpdatingStatus;
   final bool isUpdatingAssignments;
+  final Set<String> markingAsReadDiscussionIds;
   final String? operationDiscussionId;
   final String errorMessage;
   final String operationMessage;
@@ -48,6 +50,7 @@ class DiscussionState {
     bool? isLoadingAssignableDevelopers,
     bool? isUpdatingStatus,
     bool? isUpdatingAssignments,
+    Set<String>? markingAsReadDiscussionIds,
     String? operationDiscussionId,
     bool clearOperationDiscussionId = false,
     String? errorMessage,
@@ -69,6 +72,8 @@ class DiscussionState {
       isUpdatingStatus: isUpdatingStatus ?? this.isUpdatingStatus,
       isUpdatingAssignments:
           isUpdatingAssignments ?? this.isUpdatingAssignments,
+        markingAsReadDiscussionIds:
+          markingAsReadDiscussionIds ?? this.markingAsReadDiscussionIds,
       operationDiscussionId: clearOperationDiscussionId
           ? null
           : operationDiscussionId ?? this.operationDiscussionId,

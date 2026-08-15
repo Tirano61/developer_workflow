@@ -19,6 +19,8 @@ class ApiEndpoints {
 
   static String discussionStatusById(String id) => '${discussionById(id)}/status';
 
+    static String discussionReadById(String id) => '${discussionById(id)}/read';
+
   static String discussionAssignmentsById(String id) =>
       '${discussionById(id)}/assignments';
 
