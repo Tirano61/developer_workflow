@@ -446,7 +446,7 @@
 								"value": "Bearer {{token}}"
 							}
 						],
-						"url": "{{DWbaseUrl}}/develop-workflow/discussions?page=1&limit=20&type=ERROR&status=NEW&applicationIds={{applicationId}}&indicatorIds={{indicatorId}}&tagIds={{tagId}}&mine=false&assignedToMe=false&assignedDeveloperId={{developerUserId}}"
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions?page=1&limit=20&type=ERROR&status=NEW&applicationIds={{applicationId}}&indicatorIds={{indicatorId}}&tagIds={{tagId}}&mine=false&assignedToMe=false&assignedDeveloperId={{developerUserId}}&unread=false"
 					}
 				},
 				{
@@ -473,6 +473,19 @@
 							}
 						],
 						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}"
+					}
+				},
+				{
+					"name": "Mark discussion as read (auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/read"
 					}
 				},
 				{

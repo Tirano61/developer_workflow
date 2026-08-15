@@ -21,6 +21,12 @@ class LoadDiscussionEvent extends DiscussionEvent {
   final String id;
 }
 
+class MarkDiscussionAsReadEvent extends DiscussionEvent {
+  const MarkDiscussionAsReadEvent(this.discussionId);
+
+  final String discussionId;
+}
+
 class CreateDiscussionEvent extends DiscussionEvent {
   const CreateDiscussionEvent(this.discussion);
 

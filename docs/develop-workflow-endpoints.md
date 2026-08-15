@@ -138,7 +138,7 @@ Autenticacion:
 
 ### GET /develop-workflow/discussions
 - Auth: Usuario autenticado
-- Descripcion: Lista discussions paginadas con filtros.
+- Descripcion: Lista discussions paginadas con filtros. Cada item incluye `isUnread` calculado para el usuario autenticado.
 - Query params opcionales:
   - page (default 1)
   - limit (default 20)
@@ -151,10 +151,15 @@ Autenticacion:
   - mine (true|false)
   - assignedToMe (true|false)
   - assignedDeveloperId (UUID de developer asignado)
+  - unread (true|false)
 
 ### GET /develop-workflow/discussions/:id
 - Auth: Usuario autenticado
-- Descripcion: Obtiene una discussion por id con creador, applications, indicators y tags.
+- Descripcion: Obtiene una discussion por id con creador, applications, indicators y tags. Incluye `isUnread` para el usuario autenticado.
+
+### POST /develop-workflow/discussions/:id/read
+- Auth: Usuario autenticado
+- Descripcion: Marca la discussion como leida para el usuario autenticado (idempotente, usa UPSERT por `(discussion_id, user_id)`).
 
 ### PATCH /develop-workflow/discussions/:id
 - Auth: Usuario autenticado
@@ -250,7 +255,7 @@ Autenticacion:
 
 ### POST /develop-workflow/discussions/:discussionId/messages
 - Auth: Usuario autenticado
-- Descripcion: Crea un mensaje TEXT dentro de la discussion usando author del token.
+- Descripcion: Crea un mensaje TEXT dentro de la discussion usando author del token. El autor queda marcado como leido hasta ese momento.
 - Body:
 ```json
 {
@@ -262,7 +267,7 @@ Autenticacion:
 ### POST /develop-workflow/discussions/:discussionId/messages/files
 - Auth: Usuario autenticado
 - Content-Type: multipart/form-data
-- Descripcion: Sube un archivo a Cloudinary y crea un DiscussionMessage de tipo IMAGE, AUDIO, VIDEO o FILE.
+- Descripcion: Sube un archivo a Cloudinary y crea un DiscussionMessage de tipo IMAGE, AUDIO, VIDEO o FILE. El autor queda marcado como leido hasta ese momento.
 - Form-data:
   - type (IMAGE | AUDIO | VIDEO | FILE)
   - file (binary)
@@ -330,3 +335,13 @@ Autenticacion:
 - tagId: UUID valido de dw_tags
 - messageId: UUID valido de dw_discussion_messages
 - developerUserId: UUID valido de users con rol developer
+
+## Read State / Unread
+
+- El estado `status` de la discussion (NEW, REVIEW, IN_PROGRESS, RESOLVED) representa flujo de trabajo global y no se usa para leido/no leido.
+- El estado de lectura es por usuario y se guarda en `dw_discussion_read_states` con `lastReadAt`.
+- Si no existe read-state para una discussion+usuario, se interpreta como "nunca leida".
+- `isUnread` se calcula comparando `lastReadAt` contra la ultima actividad de la discussion.
+- Actividad nueva considerada en backend:
+  - nuevo mensaje (TEXT, IMAGE, AUDIO, VIDEO, FILE);
+  - cualquier actualizacion de la discussion que impacte `updatedAt` (ej: cambios de status, asignaciones, relaciones/contexto, edicion).

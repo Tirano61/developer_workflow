@@ -25,6 +25,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
   static const double _desktopBreakpoint = 980;
 
   _DiscussionViewFilter _viewFilter = _DiscussionViewFilter.all;
+  bool _unreadOnly = false;
   DiscussionRecordStatus _mobileStatus = DiscussionRecordStatus.newDiscussion;
   String? _selectedDiscussionId;
 
@@ -323,27 +324,47 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
       child: Row(
         children: [
-          ChoiceChip(
-            label: const Text('Todas'),
-            selected: _viewFilter == _DiscussionViewFilter.all,
-            onSelected: (_) => _setViewFilter(_DiscussionViewFilter.all),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('Todas'),
+                    selected: _viewFilter == _DiscussionViewFilter.all,
+                    onSelected: (_) => _setViewFilter(_DiscussionViewFilter.all),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: const Text('Creadas por mi'),
+                    selected: _viewFilter == _DiscussionViewFilter.mine,
+                    onSelected: (_) => _setViewFilter(_DiscussionViewFilter.mine),
+                  ),
+                  if (isDeveloper) ...[
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('Asignadas a mi'),
+                      selected: _viewFilter == _DiscussionViewFilter.assignedToMe,
+                      onSelected: (_) =>
+                          _setViewFilter(_DiscussionViewFilter.assignedToMe),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    label: const Text('No leidas'),
+                    selected: _unreadOnly,
+                    onSelected: (selected) {
+                      setState(() {
+                        _unreadOnly = selected;
+                      });
+                      _requestDiscussions(forDesktop: _isDesktop(context));
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(width: 8),
-          ChoiceChip(
-            label: const Text('Creadas por mi'),
-            selected: _viewFilter == _DiscussionViewFilter.mine,
-            onSelected: (_) => _setViewFilter(_DiscussionViewFilter.mine),
-          ),
-          if (isDeveloper) ...[
-            const SizedBox(width: 8),
-            ChoiceChip(
-              label: const Text('Asignadas a mi'),
-              selected: _viewFilter == _DiscussionViewFilter.assignedToMe,
-              onSelected: (_) =>
-                  _setViewFilter(_DiscussionViewFilter.assignedToMe),
-            ),
-          ],
-          const Spacer(),
           IconButton(
             tooltip: 'Recargar',
             onPressed: () => _requestDiscussions(forDesktop: _isDesktop(context)),
@@ -380,6 +401,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
       status: statusFilter,
       mine: _viewFilter == _DiscussionViewFilter.mine,
       assignedToMe: _viewFilter == _DiscussionViewFilter.assignedToMe,
+      unread: _unreadOnly ? true : null,
     );
   }
 
@@ -429,6 +451,8 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     if (discussionId == null || discussionId.isEmpty) {
       return;
     }
+
+    context.read<DiscussionBloc>().add(MarkDiscussionAsReadEvent(discussionId));
 
     if (desktopSelection) {
       setState(() {

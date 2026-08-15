@@ -131,6 +131,7 @@ class Discussion {
     required this.title,
     this.initialMessageContent,
     this.status = DiscussionRecordStatus.newDiscussion,
+    this.isUnread = false,
     this.createdBy,
     this.createdAt,
     this.updatedAt,
@@ -148,6 +149,7 @@ class Discussion {
   final String title;
   final String? initialMessageContent;
   final DiscussionRecordStatus status;
+  final bool isUnread;
   final DiscussionCreator? createdBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -190,6 +192,7 @@ class Discussion {
     String? title,
     String? initialMessageContent,
     DiscussionRecordStatus? status,
+    bool? isUnread,
     DiscussionCreator? createdBy,
     bool clearCreatedBy = false,
     DateTime? createdAt,
@@ -209,6 +212,7 @@ class Discussion {
       initialMessageContent:
           initialMessageContent ?? this.initialMessageContent,
       status: status ?? this.status,
+        isUnread: isUnread ?? this.isUnread,
       createdBy: clearCreatedBy ? null : createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -221,4 +225,16 @@ class Discussion {
       assignedDevelopers: assignedDevelopers ?? this.assignedDevelopers,
     );
   }
+}
+
+class DiscussionReadState {
+  const DiscussionReadState({
+    required this.discussionId,
+    this.lastReadAt,
+    required this.isUnread,
+  });
+
+  final String discussionId;
+  final DateTime? lastReadAt;
+  final bool isUnread;
 }

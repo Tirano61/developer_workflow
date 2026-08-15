@@ -26,6 +26,7 @@ import '../../features/discussions/domain/usecases/create_discussion.dart';
 import '../../features/discussions/domain/usecases/get_assignable_developers.dart';
 import '../../features/discussions/domain/usecases/get_discussion.dart';
 import '../../features/discussions/domain/usecases/get_discussions.dart';
+import '../../features/discussions/domain/usecases/mark_discussion_as_read.dart';
 import '../../features/discussions/domain/usecases/remove_discussion_assignment.dart';
 import '../../features/discussions/domain/usecases/replace_discussion_assignments.dart';
 import '../../features/discussions/domain/usecases/update_discussion.dart';
@@ -209,6 +210,9 @@ Future<void> configureDependencies() async {
   sl.registerLazySingleton<GetDiscussion>(
     () => GetDiscussion(sl<DiscussionRepository>()),
   );
+  sl.registerLazySingleton<MarkDiscussionAsRead>(
+    () => MarkDiscussionAsRead(sl<DiscussionRepository>()),
+  );
   sl.registerLazySingleton<CreateDiscussion>(
     () => CreateDiscussion(sl<DiscussionRepository>()),
   );
@@ -234,6 +238,7 @@ Future<void> configureDependencies() async {
     () => DiscussionBloc(
       getDiscussions: sl<GetDiscussions>(),
       getDiscussion: sl<GetDiscussion>(),
+      markDiscussionAsRead: sl<MarkDiscussionAsRead>(),
       createDiscussion: sl<CreateDiscussion>(),
       updateDiscussion: sl<UpdateDiscussion>(),
       updateDiscussionStatus: sl<UpdateDiscussionStatus>(),

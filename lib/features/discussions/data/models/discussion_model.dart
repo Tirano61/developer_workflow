@@ -168,6 +168,7 @@ class DiscussionModel {
     required this.title,
     this.initialMessageContent,
     this.status = DiscussionRecordStatus.newDiscussion,
+    this.isUnread = false,
     this.createdBy,
     this.createdAt,
     this.updatedAt,
@@ -185,6 +186,7 @@ class DiscussionModel {
   final String title;
   final String? initialMessageContent;
   final DiscussionRecordStatus status;
+  final bool isUnread;
   final DiscussionCreatorModel? createdBy;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -219,6 +221,7 @@ class DiscussionModel {
       status: DiscussionRecordStatusX.fromApiValue(
         _readString(json, const ['status']),
       ),
+      isUnread: _readBool(json, const ['isUnread', 'is_unread']) ?? false,
       createdBy: _readCreator(json),
       createdAt: _readDateTime(json, const ['createdAt', 'created_at']),
       updatedAt: _readDateTime(json, const ['updatedAt', 'updated_at']),
@@ -291,6 +294,7 @@ class DiscussionModel {
       title: title,
       initialMessageContent: initialMessageContent,
       status: status,
+      isUnread: isUnread,
       createdBy: createdBy?.toEntity(),
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -317,6 +321,7 @@ class DiscussionModel {
       title: entity.title,
       initialMessageContent: entity.initialMessageContent,
       status: entity.status,
+        isUnread: entity.isUnread,
       createdBy: entity.createdBy != null
           ? DiscussionCreatorModel.fromEntity(entity.createdBy!)
           : null,
@@ -522,6 +527,59 @@ class DiscussionPageModel {
     throw const DataParsingException(
       'Discussion list response does not include a data array.',
     );
+  }
+}
+
+class DiscussionReadStateModel {
+  const DiscussionReadStateModel({
+    required this.discussionId,
+    this.lastReadAt,
+    required this.isUnread,
+  });
+
+  final String discussionId;
+  final DateTime? lastReadAt;
+  final bool isUnread;
+
+  factory DiscussionReadStateModel.fromPayload(
+    Object? payload, {
+    required String fallbackDiscussionId,
+  }) {
+    if (payload is Map<String, dynamic>) {
+      final source = _unwrapReadPayload(payload);
+      final parsedDiscussionId = _readString(source, const [
+        'discussionId',
+        'discussion_id',
+      ]);
+
+      return DiscussionReadStateModel(
+        discussionId: (parsedDiscussionId ?? fallbackDiscussionId).trim(),
+        lastReadAt: _readDateTime(source, const ['lastReadAt', 'last_read_at']),
+        isUnread: _readBool(source, const ['isUnread', 'is_unread']) ?? false,
+      );
+    }
+
+    return DiscussionReadStateModel(
+      discussionId: fallbackDiscussionId.trim(),
+      isUnread: false,
+    );
+  }
+
+  DiscussionReadState toEntity() {
+    return DiscussionReadState(
+      discussionId: discussionId,
+      lastReadAt: lastReadAt,
+      isUnread: isUnread,
+    );
+  }
+
+  static Map<String, dynamic> _unwrapReadPayload(Map<String, dynamic> payload) {
+    final data = payload['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+
+    return payload;
   }
 }
 

@@ -12,6 +12,8 @@ abstract class DiscussionRemoteDataSource {
 
   Future<DiscussionModel> getDiscussionById(String id);
 
+  Future<DiscussionReadStateModel> markDiscussionAsRead(String discussionId);
+
   Future<DiscussionModel> createDiscussion(DiscussionModel discussion);
 
   Future<DiscussionModel> updateDiscussion(DiscussionModel discussion);
@@ -64,6 +66,23 @@ class DiscussionRemoteDataSourceImpl implements DiscussionRemoteDataSource {
     );
 
     return _parseSingleDiscussion(response.data);
+  }
+
+  @override
+  Future<DiscussionReadStateModel> markDiscussionAsRead(String discussionId) async {
+    final normalizedDiscussionId = discussionId.trim();
+    if (normalizedDiscussionId.isEmpty) {
+      throw const ValidationException('A discussion id is required.');
+    }
+
+    final response = await _restClient.post<Object?>(
+      ApiEndpoints.discussionReadById(Uri.encodeComponent(normalizedDiscussionId)),
+    );
+
+    return DiscussionReadStateModel.fromPayload(
+      response.data,
+      fallbackDiscussionId: normalizedDiscussionId,
+    );
   }
 
   @override
@@ -268,6 +287,10 @@ class DiscussionRemoteDataSourceImpl implements DiscussionRemoteDataSource {
 
     if (filters.assignedToMe) {
       params['assignedToMe'] = true;
+    }
+
+    if (filters.unread != null) {
+      params['unread'] = filters.unread;
     }
 
     final assignedDeveloperId = filters.assignedDeveloperId?.trim();

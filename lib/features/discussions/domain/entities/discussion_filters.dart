@@ -13,6 +13,7 @@ class DiscussionFilters {
     this.mine = false,
     this.assignedToMe = false,
     this.assignedDeveloperId,
+    this.unread,
   });
 
   final int page;
@@ -26,6 +27,7 @@ class DiscussionFilters {
   final bool mine;
   final bool assignedToMe;
   final String? assignedDeveloperId;
+  final bool? unread;
 
   DiscussionFilters copyWith({
     int? page,
@@ -43,6 +45,8 @@ class DiscussionFilters {
     bool? assignedToMe,
     String? assignedDeveloperId,
     bool clearAssignedDeveloperId = false,
+    bool? unread,
+    bool clearUnread = false,
   }) {
     return DiscussionFilters(
       page: page ?? this.page,
@@ -58,6 +62,7 @@ class DiscussionFilters {
       assignedDeveloperId: clearAssignedDeveloperId
           ? null
           : assignedDeveloperId ?? this.assignedDeveloperId,
+      unread: clearUnread ? null : unread ?? this.unread,
     );
   }
 }

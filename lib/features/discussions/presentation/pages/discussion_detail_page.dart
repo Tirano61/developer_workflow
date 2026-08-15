@@ -40,10 +40,23 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
   final ScrollController _contentScrollController = ScrollController();
 
   bool _pendingComposerClear = false;
+  String? _markAsReadRequestedForDiscussionId;
 
   @override
   void initState() {
     super.initState();
+    _loadDiscussion();
+    _loadMessages();
+  }
+
+  @override
+  void didUpdateWidget(covariant DiscussionDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.discussionId == widget.discussionId) {
+      return;
+    }
+
+    _markAsReadRequestedForDiscussionId = null;
     _loadDiscussion();
     _loadMessages();
   }
@@ -60,12 +73,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
     final content = MultiBlocListener(
         listeners: [
           BlocListener<DiscussionBloc, DiscussionState>(
-            listener: (context, state) {
-              if (state.status == DiscussionStatus.error &&
-                  state.errorMessage.isNotEmpty) {
-                _showMessage(state.errorMessage);
-              }
-            },
+            listener: _onDiscussionStateChanged,
           ),
           BlocListener<DiscussionMessageBloc, DiscussionMessageState>(
             listener: _onDiscussionMessageStateChanged,
@@ -139,6 +147,26 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
   void _loadDiscussion() {
     context.read<DiscussionBloc>().add(
       LoadDiscussionEvent(widget.discussionId),
+    );
+  }
+
+  void _onDiscussionStateChanged(BuildContext context, DiscussionState state) {
+    if (state.status == DiscussionStatus.error && state.errorMessage.isNotEmpty) {
+      _showMessage(state.errorMessage);
+    }
+
+    final discussion = _resolveDiscussion(state);
+    if (discussion == null || !discussion.isUnread) {
+      return;
+    }
+
+    if (_markAsReadRequestedForDiscussionId == widget.discussionId) {
+      return;
+    }
+
+    _markAsReadRequestedForDiscussionId = widget.discussionId;
+    context.read<DiscussionBloc>().add(
+      MarkDiscussionAsReadEvent(widget.discussionId),
     );
   }
 

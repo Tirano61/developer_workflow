@@ -9,6 +9,7 @@ import '../../domain/usecases/create_discussion.dart';
 import '../../domain/usecases/get_assignable_developers.dart';
 import '../../domain/usecases/get_discussion.dart';
 import '../../domain/usecases/get_discussions.dart';
+import '../../domain/usecases/mark_discussion_as_read.dart';
 import '../../domain/usecases/remove_discussion_assignment.dart';
 import '../../domain/usecases/replace_discussion_assignments.dart';
 import '../../domain/usecases/update_discussion.dart';
@@ -20,6 +21,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
   DiscussionBloc({
     required GetDiscussions getDiscussions,
     required GetDiscussion getDiscussion,
+    required MarkDiscussionAsRead markDiscussionAsRead,
     required CreateDiscussion createDiscussion,
     required UpdateDiscussion updateDiscussion,
     required UpdateDiscussionStatus updateDiscussionStatus,
@@ -29,6 +31,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
     required RemoveDiscussionAssignment removeDiscussionAssignment,
   }) : _getDiscussions = getDiscussions,
        _getDiscussion = getDiscussion,
+      _markDiscussionAsRead = markDiscussionAsRead,
        _createDiscussion = createDiscussion,
        _updateDiscussion = updateDiscussion,
        _updateDiscussionStatus = updateDiscussionStatus,
@@ -39,6 +42,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
        super(const DiscussionState()) {
     on<LoadDiscussionsEvent>(_onLoadDiscussions);
     on<LoadDiscussionEvent>(_onLoadDiscussion);
+    on<MarkDiscussionAsReadEvent>(_onMarkDiscussionAsRead);
     on<CreateDiscussionEvent>(_onCreateDiscussion);
     on<UpdateDiscussionEvent>(_onUpdateDiscussion);
     on<SelectDiscussionEvent>(_onSelectDiscussion);
@@ -53,6 +57,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
 
   final GetDiscussions _getDiscussions;
   final GetDiscussion _getDiscussion;
+  final MarkDiscussionAsRead _markDiscussionAsRead;
   final CreateDiscussion _createDiscussion;
   final UpdateDiscussion _updateDiscussion;
   final UpdateDiscussionStatus _updateDiscussionStatus;
@@ -139,6 +144,77 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
       emit(
         state.copyWith(
           status: DiscussionStatus.error,
+          errorMessage: result.failure.message,
+        ),
+      );
+    }
+  }
+
+  Future<void> _onMarkDiscussionAsRead(
+    MarkDiscussionAsReadEvent event,
+    Emitter<DiscussionState> emit,
+  ) async {
+    final discussionId = event.discussionId.trim();
+    if (discussionId.isEmpty) {
+      return;
+    }
+
+    if (state.markingAsReadDiscussionIds.contains(discussionId)) {
+      return;
+    }
+
+    final discussion = _findDiscussionInState(discussionId);
+    if (discussion != null && !discussion.isUnread) {
+      return;
+    }
+
+    emit(
+      state.copyWith(
+        markingAsReadDiscussionIds: <String>{
+          ...state.markingAsReadDiscussionIds,
+          discussionId,
+        },
+      ),
+    );
+
+    final result = await _markDiscussionAsRead(discussionId);
+
+    if (result is Success<DiscussionReadState>) {
+      final nextPage = _updateDiscussionReadState(
+        current: state.page,
+        discussionId: discussionId,
+        isUnread: result.data.isUnread,
+      );
+
+      Discussion? nextSelectedDiscussion = state.selectedDiscussion;
+      if (nextSelectedDiscussion != null &&
+          nextSelectedDiscussion.id == discussionId) {
+        nextSelectedDiscussion = nextSelectedDiscussion.copyWith(
+          isUnread: result.data.isUnread,
+        );
+      }
+
+      final nextInProgress = Set<String>.from(state.markingAsReadDiscussionIds)
+        ..remove(discussionId);
+
+      emit(
+        state.copyWith(
+          status: DiscussionStatus.success,
+          page: nextPage,
+          selectedDiscussion: nextSelectedDiscussion,
+          markingAsReadDiscussionIds: nextInProgress,
+        ),
+      );
+      return;
+    }
+
+    if (result is FailureResult<DiscussionReadState>) {
+      final nextInProgress = Set<String>.from(state.markingAsReadDiscussionIds)
+        ..remove(discussionId);
+
+      emit(
+        state.copyWith(
+          markingAsReadDiscussionIds: nextInProgress,
           errorMessage: result.failure.message,
         ),
       );
@@ -466,13 +542,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
   ) {
     final alreadyExists = _containsDiscussion(current.data, discussion);
     var mergedData = _upsertById(current.data, discussion);
-
-    final statusFilter = state.filters.status;
-    if (statusFilter != null && statusFilter != DiscussionRecordStatus.unknown) {
-      mergedData = mergedData
-          .where((item) => item.status == statusFilter)
-          .toList(growable: false);
-    }
+    mergedData = _applyActiveFilters(mergedData);
 
     var mergedTotal = current.total;
     if (!alreadyExists) {
@@ -494,6 +564,61 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
       total: mergedTotal,
       totalPages: mergedTotalPages,
     );
+  }
+
+  List<Discussion> _applyActiveFilters(List<Discussion> discussions) {
+    var filtered = discussions;
+
+    final statusFilter = state.filters.status;
+    if (statusFilter != null && statusFilter != DiscussionRecordStatus.unknown) {
+      filtered = filtered
+          .where((item) => item.status == statusFilter)
+          .toList(growable: false);
+    }
+
+    final unreadFilter = state.filters.unread;
+    if (unreadFilter != null) {
+      filtered = filtered
+          .where((item) => item.isUnread == unreadFilter)
+          .toList(growable: false);
+    }
+
+    return filtered;
+  }
+
+  DiscussionPage _updateDiscussionReadState({
+    required DiscussionPage current,
+    required String discussionId,
+    required bool isUnread,
+  }) {
+    final updatedData = current.data
+        .map(
+          (discussion) => discussion.id == discussionId
+              ? discussion.copyWith(isUnread: isUnread)
+              : discussion,
+        )
+        .toList(growable: false);
+
+    final filteredData = _applyActiveFilters(updatedData);
+    final total = state.filters.unread == true
+        ? filteredData.length
+        : current.total;
+    final totalPages = total == 0
+        ? 0
+        : current.limit > 0
+        ? (total / current.limit).ceil()
+        : current.totalPages;
+
+    return current.copyWith(data: filteredData, total: total, totalPages: totalPages);
+  }
+
+  Discussion? _findDiscussionInState(String discussionId) {
+    final selected = state.selectedDiscussion;
+    if (selected != null && selected.id == discussionId) {
+      return selected;
+    }
+
+    return _findById(state.page.data, discussionId);
   }
 
   String? _resolveSelectedDiscussionId([Discussion? updated]) {

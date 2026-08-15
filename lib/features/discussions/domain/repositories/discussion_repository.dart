@@ -11,6 +11,8 @@ abstract class DiscussionRepository {
 
   Future<Result<Discussion>> getDiscussionById(String id);
 
+  Future<Result<DiscussionReadState>> markDiscussionAsRead(String discussionId);
+
   Future<Result<Discussion>> createDiscussion(Discussion discussion);
 
   Future<Result<Discussion>> updateDiscussion(Discussion discussion);
