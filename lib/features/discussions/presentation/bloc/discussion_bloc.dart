@@ -2,11 +2,17 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/error/result.dart';
 import '../../domain/entities/discussion.dart';
+import '../../domain/entities/discussion_developer.dart';
 import '../../domain/entities/discussion_page.dart';
+import '../../domain/usecases/add_discussion_assignments.dart';
 import '../../domain/usecases/create_discussion.dart';
+import '../../domain/usecases/get_assignable_developers.dart';
 import '../../domain/usecases/get_discussion.dart';
 import '../../domain/usecases/get_discussions.dart';
+import '../../domain/usecases/remove_discussion_assignment.dart';
+import '../../domain/usecases/replace_discussion_assignments.dart';
 import '../../domain/usecases/update_discussion.dart';
+import '../../domain/usecases/update_discussion_status.dart';
 import 'discussion_event.dart';
 import 'discussion_state.dart';
 
@@ -16,42 +22,81 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
     required GetDiscussion getDiscussion,
     required CreateDiscussion createDiscussion,
     required UpdateDiscussion updateDiscussion,
+    required UpdateDiscussionStatus updateDiscussionStatus,
+    required GetAssignableDevelopers getAssignableDevelopers,
+    required AddDiscussionAssignments addDiscussionAssignments,
+    required ReplaceDiscussionAssignments replaceDiscussionAssignments,
+    required RemoveDiscussionAssignment removeDiscussionAssignment,
   }) : _getDiscussions = getDiscussions,
        _getDiscussion = getDiscussion,
        _createDiscussion = createDiscussion,
        _updateDiscussion = updateDiscussion,
+       _updateDiscussionStatus = updateDiscussionStatus,
+       _getAssignableDevelopers = getAssignableDevelopers,
+       _addDiscussionAssignments = addDiscussionAssignments,
+       _replaceDiscussionAssignments = replaceDiscussionAssignments,
+       _removeDiscussionAssignment = removeDiscussionAssignment,
        super(const DiscussionState()) {
     on<LoadDiscussionsEvent>(_onLoadDiscussions);
     on<LoadDiscussionEvent>(_onLoadDiscussion);
     on<CreateDiscussionEvent>(_onCreateDiscussion);
     on<UpdateDiscussionEvent>(_onUpdateDiscussion);
+    on<SelectDiscussionEvent>(_onSelectDiscussion);
+    on<LoadAssignableDevelopersEvent>(_onLoadAssignableDevelopers);
+    on<ChangeDiscussionStatusEvent>(_onChangeDiscussionStatus);
+    on<AddDiscussionAssignmentsEvent>(_onAddDiscussionAssignments);
+    on<ReplaceDiscussionAssignmentsEvent>(_onReplaceDiscussionAssignments);
+    on<RemoveDiscussionAssignmentEvent>(_onRemoveDiscussionAssignment);
+    on<AssignDiscussionToMeEvent>(_onAssignDiscussionToMe);
+    on<ClearDiscussionOperationMessageEvent>(_onClearOperationMessage);
   }
 
   final GetDiscussions _getDiscussions;
   final GetDiscussion _getDiscussion;
   final CreateDiscussion _createDiscussion;
   final UpdateDiscussion _updateDiscussion;
+  final UpdateDiscussionStatus _updateDiscussionStatus;
+  final GetAssignableDevelopers _getAssignableDevelopers;
+  final AddDiscussionAssignments _addDiscussionAssignments;
+  final ReplaceDiscussionAssignments _replaceDiscussionAssignments;
+  final RemoveDiscussionAssignment _removeDiscussionAssignment;
 
   Future<void> _onLoadDiscussions(
     LoadDiscussionsEvent event,
     Emitter<DiscussionState> emit,
   ) async {
-    emit(
-      state.copyWith(
-        status: DiscussionStatus.loading,
-        filters: event.filters,
-        errorMessage: '',
-      ),
-    );
+    if (!event.silent) {
+      emit(
+        state.copyWith(
+          status: DiscussionStatus.loading,
+          filters: event.filters,
+          errorMessage: '',
+          operationMessage: '',
+        ),
+      );
+    } else {
+      emit(
+        state.copyWith(
+          filters: event.filters,
+          errorMessage: '',
+          operationMessage: '',
+        ),
+      );
+    }
 
     final result = await _getDiscussions(filters: event.filters);
 
     if (result is Success<DiscussionPage>) {
+      final selectedDiscussionId = _resolveSelectedDiscussionId();
+      final selectedDiscussion = _findById(result.data.data, selectedDiscussionId);
+
       emit(
         state.copyWith(
           status: DiscussionStatus.success,
           page: result.data,
           filters: event.filters,
+          selectedDiscussion: selectedDiscussion,
+          selectedDiscussionId: selectedDiscussionId,
           errorMessage: '',
         ),
       );
@@ -82,6 +127,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
         state.copyWith(
           status: DiscussionStatus.success,
           selectedDiscussion: selected,
+          selectedDiscussionId: selected.id,
           page: _mergeDiscussionIntoPage(state.page, selected),
           errorMessage: '',
         ),
@@ -113,6 +159,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
         state.copyWith(
           status: DiscussionStatus.success,
           selectedDiscussion: created,
+          selectedDiscussionId: created.id,
           page: _mergeDiscussionIntoPage(state.page, created),
           errorMessage: '',
         ),
@@ -144,6 +191,7 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
         state.copyWith(
           status: DiscussionStatus.success,
           selectedDiscussion: updated,
+          selectedDiscussionId: updated.id,
           page: _mergeDiscussionIntoPage(state.page, updated),
           errorMessage: '',
         ),
@@ -161,12 +209,270 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
     }
   }
 
+  void _onSelectDiscussion(
+    SelectDiscussionEvent event,
+    Emitter<DiscussionState> emit,
+  ) {
+    final discussionId = event.discussionId?.trim();
+    if (discussionId == null || discussionId.isEmpty) {
+      emit(
+        state.copyWith(
+          selectedDiscussionId: null,
+          clearSelectedDiscussionId: true,
+          selectedDiscussion: null,
+          clearSelectedDiscussion: true,
+        ),
+      );
+      return;
+    }
+
+    emit(
+      state.copyWith(
+        selectedDiscussionId: discussionId,
+        selectedDiscussion: _findById(state.page.data, discussionId),
+      ),
+    );
+  }
+
+  Future<void> _onLoadAssignableDevelopers(
+    LoadAssignableDevelopersEvent event,
+    Emitter<DiscussionState> emit,
+  ) async {
+    if (!event.forceReload && state.assignableDevelopers.isNotEmpty) {
+      return;
+    }
+
+    emit(
+      state.copyWith(
+        isLoadingAssignableDevelopers: true,
+        errorMessage: '',
+        operationMessage: '',
+      ),
+    );
+
+    final result = await _getAssignableDevelopers();
+
+    if (result is Success<List<AssignableDeveloper>>) {
+      emit(
+        state.copyWith(
+          isLoadingAssignableDevelopers: false,
+          assignableDevelopers: result.data,
+          errorMessage: '',
+        ),
+      );
+      return;
+    }
+
+    if (result is FailureResult<List<AssignableDeveloper>>) {
+      emit(
+        state.copyWith(
+          isLoadingAssignableDevelopers: false,
+          status: DiscussionStatus.error,
+          errorMessage: result.failure.message,
+        ),
+      );
+    }
+  }
+
+  Future<void> _onChangeDiscussionStatus(
+    ChangeDiscussionStatusEvent event,
+    Emitter<DiscussionState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        isUpdatingStatus: true,
+        operationDiscussionId: event.discussionId,
+        errorMessage: '',
+        operationMessage: '',
+      ),
+    );
+
+    final result = await _updateDiscussionStatus(
+      discussionId: event.discussionId,
+      status: event.status,
+    );
+
+    await _handleDiscussionOperationResult(
+      emit: emit,
+      result: result,
+      successMessage: 'Estado actualizado correctamente.',
+      clearStatusOperation: true,
+    );
+  }
+
+  Future<void> _onAddDiscussionAssignments(
+    AddDiscussionAssignmentsEvent event,
+    Emitter<DiscussionState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        isUpdatingAssignments: true,
+        operationDiscussionId: event.discussionId,
+        errorMessage: '',
+        operationMessage: '',
+      ),
+    );
+
+    final result = await _addDiscussionAssignments(
+      discussionId: event.discussionId,
+      developerUserIds: event.developerUserIds,
+    );
+
+    await _handleDiscussionOperationResult(
+      emit: emit,
+      result: result,
+      successMessage: 'Asignaciones actualizadas correctamente.',
+      clearAssignmentOperation: true,
+    );
+  }
+
+  Future<void> _onReplaceDiscussionAssignments(
+    ReplaceDiscussionAssignmentsEvent event,
+    Emitter<DiscussionState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        isUpdatingAssignments: true,
+        operationDiscussionId: event.discussionId,
+        errorMessage: '',
+        operationMessage: '',
+      ),
+    );
+
+    final result = await _replaceDiscussionAssignments(
+      discussionId: event.discussionId,
+      developerUserIds: event.developerUserIds,
+    );
+
+    await _handleDiscussionOperationResult(
+      emit: emit,
+      result: result,
+      successMessage: 'Asignaciones actualizadas correctamente.',
+      clearAssignmentOperation: true,
+    );
+  }
+
+  Future<void> _onRemoveDiscussionAssignment(
+    RemoveDiscussionAssignmentEvent event,
+    Emitter<DiscussionState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        isUpdatingAssignments: true,
+        operationDiscussionId: event.discussionId,
+        errorMessage: '',
+        operationMessage: '',
+      ),
+    );
+
+    final result = await _removeDiscussionAssignment(
+      discussionId: event.discussionId,
+      developerUserId: event.developerUserId,
+    );
+
+    await _handleDiscussionOperationResult(
+      emit: emit,
+      result: result,
+      successMessage: 'Asignacion removida correctamente.',
+      clearAssignmentOperation: true,
+    );
+  }
+
+  Future<void> _onAssignDiscussionToMe(
+    AssignDiscussionToMeEvent event,
+    Emitter<DiscussionState> emit,
+  ) async {
+    emit(
+      state.copyWith(
+        isUpdatingAssignments: true,
+        operationDiscussionId: event.discussionId,
+        errorMessage: '',
+        operationMessage: '',
+      ),
+    );
+
+    final result = await _addDiscussionAssignments(
+      discussionId: event.discussionId,
+      developerUserIds: [event.currentDeveloperUserId],
+    );
+
+    await _handleDiscussionOperationResult(
+      emit: emit,
+      result: result,
+      successMessage: 'La discussion fue asignada a tu usuario.',
+      clearAssignmentOperation: true,
+    );
+  }
+
+  void _onClearOperationMessage(
+    ClearDiscussionOperationMessageEvent event,
+    Emitter<DiscussionState> emit,
+  ) {
+    emit(state.copyWith(operationMessage: '', errorMessage: ''));
+  }
+
+  Future<void> _handleDiscussionOperationResult({
+    required Emitter<DiscussionState> emit,
+    required Result<Discussion> result,
+    required String successMessage,
+    bool clearStatusOperation = false,
+    bool clearAssignmentOperation = false,
+  }) async {
+    if (result is Success<Discussion>) {
+      final updated = result.data;
+      final nextPage = _mergeDiscussionIntoPage(state.page, updated);
+      final selectedId = _resolveSelectedDiscussionId(updated);
+
+      emit(
+        state.copyWith(
+          status: DiscussionStatus.success,
+          page: nextPage,
+          selectedDiscussionId: selectedId,
+          selectedDiscussion: _findById(nextPage.data, selectedId),
+          isUpdatingStatus: clearStatusOperation ? false : state.isUpdatingStatus,
+          isUpdatingAssignments: clearAssignmentOperation
+              ? false
+              : state.isUpdatingAssignments,
+          clearOperationDiscussionId:
+              clearStatusOperation || clearAssignmentOperation,
+          errorMessage: '',
+          operationMessage: successMessage,
+        ),
+      );
+
+      add(LoadDiscussionsEvent(filters: state.filters, silent: true));
+      return;
+    }
+
+    if (result is FailureResult<Discussion>) {
+      emit(
+        state.copyWith(
+          status: DiscussionStatus.error,
+          isUpdatingStatus: clearStatusOperation ? false : state.isUpdatingStatus,
+          isUpdatingAssignments: clearAssignmentOperation
+              ? false
+              : state.isUpdatingAssignments,
+          clearOperationDiscussionId:
+              clearStatusOperation || clearAssignmentOperation,
+          errorMessage: result.failure.message,
+        ),
+      );
+    }
+  }
+
   DiscussionPage _mergeDiscussionIntoPage(
     DiscussionPage current,
     Discussion discussion,
   ) {
     final alreadyExists = _containsDiscussion(current.data, discussion);
-    final mergedData = _upsertById(current.data, discussion);
+    var mergedData = _upsertById(current.data, discussion);
+
+    final statusFilter = state.filters.status;
+    if (statusFilter != null && statusFilter != DiscussionRecordStatus.unknown) {
+      mergedData = mergedData
+          .where((item) => item.status == statusFilter)
+          .toList(growable: false);
+    }
 
     var mergedTotal = current.total;
     if (!alreadyExists) {
@@ -188,6 +494,40 @@ class DiscussionBloc extends Bloc<DiscussionEvent, DiscussionState> {
       total: mergedTotal,
       totalPages: mergedTotalPages,
     );
+  }
+
+  String? _resolveSelectedDiscussionId([Discussion? updated]) {
+    final directId = updated?.id;
+    if (directId != null && directId.isNotEmpty) {
+      return directId;
+    }
+
+    final stateSelectedId = state.selectedDiscussionId?.trim();
+    if (stateSelectedId != null && stateSelectedId.isNotEmpty) {
+      return stateSelectedId;
+    }
+
+    final selectedEntityId = state.selectedDiscussion?.id?.trim();
+    if (selectedEntityId != null && selectedEntityId.isNotEmpty) {
+      return selectedEntityId;
+    }
+
+    return null;
+  }
+
+  Discussion? _findById(List<Discussion> list, String? discussionId) {
+    final normalizedId = discussionId?.trim();
+    if (normalizedId == null || normalizedId.isEmpty) {
+      return null;
+    }
+
+    for (final discussion in list) {
+      if (discussion.id == normalizedId) {
+        return discussion;
+      }
+    }
+
+    return null;
   }
 
   bool _containsDiscussion(List<Discussion> current, Discussion discussion) {

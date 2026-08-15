@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -14,11 +15,21 @@ import '../bloc/discussion_bloc.dart';
 import '../bloc/discussion_event.dart';
 import '../bloc/discussion_state.dart';
 import 'discussion_route_args.dart';
+import '../widgets/messages/discussion_audio_message.dart';
+import '../widgets/messages/discussion_file_message.dart';
+import '../widgets/messages/discussion_image_message.dart';
+import '../widgets/messages/discussion_text_message.dart';
+import '../widgets/messages/discussion_video_message.dart';
 
 class DiscussionDetailPage extends StatefulWidget {
-  const DiscussionDetailPage({required this.discussionId, super.key});
+  const DiscussionDetailPage({
+    required this.discussionId,
+    this.embedded = false,
+    super.key,
+  });
 
   final String discussionId;
+  final bool embedded;
 
   @override
   State<DiscussionDetailPage> createState() => _DiscussionDetailPageState();
@@ -46,9 +57,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Discussion Detail')),
-      body: MultiBlocListener(
+    final content = MultiBlocListener(
         listeners: [
           BlocListener<DiscussionBloc, DiscussionState>(
             listener: (context, state) {
@@ -115,7 +124,15 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
             _buildComposer(),
           ],
         ),
-      ),
+    );
+
+    if (widget.embedded) {
+      return content;
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Discussion Detail')),
+      body: content,
     );
   }
 
@@ -360,10 +377,21 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
                 _detailRow('ID', discussion.id ?? '-'),
                 _detailRow('Title', discussion.title),
                 _detailRow('Type', discussion.type.apiValue),
-                _detailRow('Status', discussion.status.apiValue),
+                _detailRow('Status', _statusLabel(discussion.status)),
                 _detailRow('Created by', _formatCreator(discussion.createdBy)),
                 _detailRow('Created at', _formatDate(discussion.createdAt)),
                 _detailRow('Updated at', _formatDate(discussion.updatedAt)),
+                const SizedBox(height: 12),
+                _buildStatusSection(
+                  discussion: discussion,
+                  isDeveloper: isDeveloper,
+                  messageState: messageState,
+                ),
+                const SizedBox(height: 12),
+                _buildAssignmentsSection(
+                  discussion: discussion,
+                  isDeveloper: isDeveloper,
+                ),
               ],
             ),
           ),
@@ -478,13 +506,107 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
               },
               child: const Text('Editar'),
             ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Volver'),
-            ),
+            if (!widget.embedded)
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Volver'),
+              ),
           ],
         ),
         const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildStatusSection({
+    required Discussion discussion,
+    required bool isDeveloper,
+    required DiscussionMessageState messageState,
+  }) {
+    final discussionState = context.watch<DiscussionBloc>().state;
+    final isBusy = discussionState.isUpdatingStatus &&
+        discussionState.operationDiscussionId == discussion.id;
+
+    if (!isDeveloper) {
+      return Text('Estado actual: ${_statusLabel(discussion.status)}');
+    }
+
+    return DropdownButtonFormField<DiscussionRecordStatus>(
+      initialValue: discussion.status,
+      decoration: const InputDecoration(
+        labelText: 'Estado',
+        border: OutlineInputBorder(),
+      ),
+      items: DiscussionRecordStatus.values
+          .where((status) => status != DiscussionRecordStatus.unknown)
+          .map(
+            (status) => DropdownMenuItem<DiscussionRecordStatus>(
+              value: status,
+              child: Text(_statusLabel(status)),
+            ),
+          )
+          .toList(growable: false),
+      onChanged: isBusy || messageState.isSending
+          ? null
+          : (status) {
+              final discussionId = discussion.id;
+              if (status == null || discussionId == null || discussionId.isEmpty) {
+                return;
+              }
+
+              if (status == discussion.status) {
+                return;
+              }
+
+              context.read<DiscussionBloc>().add(
+                ChangeDiscussionStatusEvent(
+                  discussionId: discussionId,
+                  status: status,
+                ),
+              );
+            },
+    );
+  }
+
+  Widget _buildAssignmentsSection({
+    required Discussion discussion,
+    required bool isDeveloper,
+  }) {
+    final discussionState = context.watch<DiscussionBloc>().state;
+    final isBusy = discussionState.isUpdatingAssignments &&
+        discussionState.operationDiscussionId == discussion.id;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Asignados', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (discussion.assignedDevelopers.isEmpty)
+          const Text('Sin asignar')
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: discussion.assignedDevelopers
+                .map((developer) => Chip(label: Text(developer.fullName)))
+                .toList(growable: false),
+          ),
+        const SizedBox(height: 8),
+        if (isDeveloper)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                onPressed: isBusy ? null : () => _openAssignmentsDialog(discussion),
+                child: const Text('Asignar developers'),
+              ),
+              OutlinedButton(
+                onPressed: isBusy ? null : () => _assignToMe(discussion),
+                child: const Text('Asignarme'),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -546,196 +668,61 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
   Widget _buildMessageBody(DiscussionMessage message) {
     switch (message.type) {
       case DiscussionMessageType.text:
-        final content = message.content.trim();
-        return Text(content.isEmpty ? '(sin contenido)' : content);
+        return DiscussionTextMessage(content: message.content);
       case DiscussionMessageType.image:
-        return _buildImageAttachmentBody(message);
+        return DiscussionImageMessage(
+          fileUrl: message.attachmentUrl,
+          caption: message.content,
+        );
       case DiscussionMessageType.audio:
+        return DiscussionAudioMessage(
+          fileUrl: message.attachmentUrl,
+          caption: message.content,
+          onOpenExternally: () => _openAttachmentUrl(message.attachmentUrl),
+        );
       case DiscussionMessageType.video:
+        return DiscussionVideoMessage(
+          fileUrl: message.attachmentUrl,
+          caption: message.content,
+          onOpenExternally: () => _openAttachmentUrl(message.attachmentUrl),
+        );
       case DiscussionMessageType.file:
       case DiscussionMessageType.unknown:
-        return _buildGenericAttachmentBody(message);
+        return DiscussionFileMessage(
+          message: message,
+          onOpen: () =>
+              _openAttachmentUrl(message.attachmentUrl, preferDownload: kIsWeb),
+        );
     }
   }
 
-  Widget _buildImageAttachmentBody(DiscussionMessage message) {
-    final url = message.attachmentUrl?.trim();
-    final caption = message.content.trim();
-    final hasUrl = url != null && url.isNotEmpty;
-    final previewWidth = MediaQuery.sizeOf(context).width < 480 ? 140.0 : 180.0;
-    const previewHeight = 120.0;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (hasUrl)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: InkWell(
-              onTap: () => _openAttachmentUrl(url),
-              child: SizedBox(
-                width: previewWidth,
-                height: previewHeight,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        color: Theme.of(context).colorScheme.surface,
-                        child: const Text('No se pudo previsualizar la imagen.'),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          )
-        else
-          const Text('Imagen adjunta sin URL disponible.'),
-        if (caption.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(caption),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildGenericAttachmentBody(DiscussionMessage message) {
-    final url = message.attachmentUrl?.trim();
-    final hasUrl = url != null && url.isNotEmpty;
-    final displayName =
-        message.attachmentName?.trim().isNotEmpty == true
-        ? message.attachmentName!.trim()
-        : 'Adjunto ${_messageTypeLabel(message.type)}';
-
-    final detailParts = <String>[
-      if (message.attachmentMimeType != null &&
-          message.attachmentMimeType!.trim().isNotEmpty)
-        message.attachmentMimeType!.trim(),
-      if (message.attachmentSizeBytes != null && message.attachmentSizeBytes! >= 0)
-        _formatFileSize(message.attachmentSizeBytes!),
-    ];
-
-    final caption = message.content.trim();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(_messageTypeIcon(message.type)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(displayName, overflow: TextOverflow.ellipsis),
-                    if (detailParts.isNotEmpty)
-                      Text(
-                        detailParts.join(' · '),
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                  ],
-                ),
-              ),
-              if (hasUrl)
-                IconButton(
-                  tooltip: 'Abrir adjunto',
-                  onPressed: () => _openAttachmentUrl(url),
-                  icon: const Icon(Icons.open_in_new),
-                ),
-            ],
-          ),
-        ),
-        if (caption.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(caption),
-        ],
-      ],
-    );
-  }
-
-  IconData _messageTypeIcon(DiscussionMessageType type) {
-    switch (type) {
-      case DiscussionMessageType.image:
-        return Icons.image_outlined;
-      case DiscussionMessageType.audio:
-        return Icons.audiotrack_outlined;
-      case DiscussionMessageType.video:
-        return Icons.videocam_outlined;
-      case DiscussionMessageType.file:
-        return Icons.insert_drive_file_outlined;
-      case DiscussionMessageType.text:
-        return Icons.notes_outlined;
-      case DiscussionMessageType.unknown:
-        return Icons.help_outline;
-    }
-  }
-
-  String _messageTypeLabel(DiscussionMessageType type) {
-    switch (type) {
-      case DiscussionMessageType.text:
-        return 'texto';
-      case DiscussionMessageType.image:
-        return 'imagen';
-      case DiscussionMessageType.audio:
-        return 'audio';
-      case DiscussionMessageType.video:
-        return 'video';
-      case DiscussionMessageType.file:
-        return 'archivo';
-      case DiscussionMessageType.unknown:
-        return 'desconocido';
-    }
-  }
-
-  String _formatFileSize(int bytes) {
-    if (bytes < 1024) {
-      return '$bytes B';
+  Future<void> _openAttachmentUrl(
+    String? rawUrl, {
+    bool preferDownload = false,
+  }) async {
+    final normalizedUrl = rawUrl?.trim();
+    if (normalizedUrl == null || normalizedUrl.isEmpty) {
+      _showMessage('No se pudo abrir el archivo.');
+      return;
     }
 
-    final kib = bytes / 1024;
-    if (kib < 1024) {
-      return '${kib.toStringAsFixed(1)} KB';
-    }
-
-    final mib = kib / 1024;
-    if (mib < 1024) {
-      return '${mib.toStringAsFixed(1)} MB';
-    }
-
-    final gib = mib / 1024;
-    return '${gib.toStringAsFixed(1)} GB';
-  }
-
-  Future<void> _openAttachmentUrl(String rawUrl) async {
-    final uri = Uri.tryParse(rawUrl);
+    final uri = Uri.tryParse(normalizedUrl);
     if (uri == null) {
-      _showMessage('URL de adjunto invalida.');
+      _showMessage('No se pudo abrir el archivo.');
       return;
     }
 
-    if (!await canLaunchUrl(uri)) {
-      _showMessage('No se pudo abrir el adjunto.');
-      return;
-    }
+    final launchMode = kIsWeb
+        ? LaunchMode.platformDefault
+        : LaunchMode.externalApplication;
+    final launched = await launchUrl(
+      uri,
+      mode: launchMode,
+      webOnlyWindowName: preferDownload ? '_blank' : null,
+    );
 
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched) {
-      _showMessage('No se pudo abrir el adjunto.');
+      _showMessage('No se pudo abrir el archivo.');
     }
   }
 
@@ -936,6 +923,142 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
     }
 
     return value.toLocal().toIso8601String();
+  }
+
+  String _statusLabel(DiscussionRecordStatus status) {
+    switch (status) {
+      case DiscussionRecordStatus.newDiscussion:
+        return 'Entrada';
+      case DiscussionRecordStatus.review:
+        return 'Revision';
+      case DiscussionRecordStatus.inProgress:
+        return 'Trabajando';
+      case DiscussionRecordStatus.resolved:
+        return 'Resuelto';
+      case DiscussionRecordStatus.unknown:
+        return 'Desconocido';
+    }
+  }
+
+  void _assignToMe(Discussion discussion) {
+    final discussionId = discussion.id;
+    final currentUser = context.read<AuthBloc>().state.session?.user;
+
+    if (discussionId == null || discussionId.isEmpty || currentUser == null) {
+      return;
+    }
+
+    context.read<DiscussionBloc>().add(
+      AssignDiscussionToMeEvent(
+        discussionId: discussionId,
+        currentDeveloperUserId: currentUser.id,
+      ),
+    );
+  }
+
+  Future<void> _openAssignmentsDialog(Discussion discussion) async {
+    final discussionId = discussion.id;
+    if (discussionId == null || discussionId.isEmpty) {
+      return;
+    }
+
+    final bloc = context.read<DiscussionBloc>();
+    bloc.add(const LoadAssignableDevelopersEvent());
+
+    final selectedIds = discussion.assignedDevelopers
+        .map((developer) => developer.id)
+        .toSet();
+
+    final savedIds = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) {
+        return BlocProvider.value(
+          value: bloc,
+          child: StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              return AlertDialog(
+                title: const Text('Asignar developers'),
+                content: SizedBox(
+                  width: 420,
+                  child: BlocBuilder<DiscussionBloc, DiscussionState>(
+                    builder: (context, state) {
+                      if (state.isLoadingAssignableDevelopers &&
+                          state.assignableDevelopers.isEmpty) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (state.assignableDevelopers.isEmpty) {
+                        return const Text('No hay developers disponibles.');
+                      }
+
+                      return SingleChildScrollView(
+                        child: Column(
+                          children: state.assignableDevelopers
+                              .map(
+                                (developer) => CheckboxListTile(
+                                  dense: true,
+                                  value: selectedIds.contains(developer.id),
+                                  title: Text(developer.fullName),
+                                  subtitle: developer.email == null
+                                      ? null
+                                      : Text(developer.email!),
+                                  onChanged: (checked) {
+                                    setDialogState(() {
+                                      if (checked == true) {
+                                        selectedIds.add(developer.id);
+                                      } else {
+                                        selectedIds.remove(developer.id);
+                                      }
+                                    });
+                                  },
+                                ),
+                              )
+                              .toList(growable: false),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(
+                      dialogContext,
+                      Set<String>.from(selectedIds),
+                    ),
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (!mounted || savedIds == null) {
+      return;
+    }
+
+    bloc.add(
+      ReplaceDiscussionAssignmentsEvent(
+        discussionId: discussionId,
+        developerUserIds: _sortedIds(savedIds),
+      ),
+    );
+  }
+
+  List<String> _sortedIds(Set<String> ids) {
+    final list = ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+
+    final sorted = List<String>.from(list)..sort();
+    return sorted;
   }
 
   void _showMessage(String message) {

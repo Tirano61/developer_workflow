@@ -75,6 +75,9 @@ class AppRouter {
           builder: (_) => MultiBlocProvider(
             providers: [
               BlocProvider<DiscussionBloc>(create: (_) => sl<DiscussionBloc>()),
+              BlocProvider<DiscussionMessageBloc>(
+                create: (_) => sl<DiscussionMessageBloc>(),
+              ),
               BlocProvider<ApplicationBloc>(
                 create: (_) => sl<ApplicationBloc>(),
               ),

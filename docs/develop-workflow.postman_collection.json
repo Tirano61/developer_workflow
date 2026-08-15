@@ -41,6 +41,10 @@
 		{
 			"key": "messageId",
 			"value": ""
+		},
+		{
+			"key": "developerUserId",
+			"value": ""
 		}
 	],
 	"item": [
@@ -442,7 +446,20 @@
 								"value": "Bearer {{token}}"
 							}
 						],
-						"url": "{{DWbaseUrl}}/develop-workflow/discussions?page=1&limit=20&type=ERROR&status=NEW&applicationIds={{applicationId}}&indicatorIds={{indicatorId}}&tagIds={{tagId}}&mine=false"
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions?page=1&limit=20&type=ERROR&status=NEW&applicationIds={{applicationId}}&indicatorIds={{indicatorId}}&tagIds={{tagId}}&mine=false&assignedToMe=false&assignedDeveloperId={{developerUserId}}"
+					}
+				},
+				{
+					"name": "List assignable developers (auth)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": "{{DWbaseUrl}}/develop-workflow/developers"
 					}
 				},
 				{
@@ -456,6 +473,27 @@
 							}
 						],
 						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}"
+					}
+				},
+				{
+					"name": "Update discussion status (developer)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"IN_PROGRESS\"\n}"
+						},
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/status"
 					}
 				},
 				{
@@ -565,6 +603,61 @@
 							"raw": "{\n  \"content\": \"Mensaje actualizado\"\n}"
 						},
 						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/messages/{{messageId}}"
+					}
+				},
+				{
+					"name": "Add discussion assignments (developer)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"developerUserIds\": [\"{{developerUserId}}\"]\n}"
+						},
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/assignments"
+					}
+				},
+				{
+					"name": "Replace discussion assignments (developer)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"developerUserIds\": [\"{{developerUserId}}\"]\n}"
+						},
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/assignments"
+					}
+				},
+				{
+					"name": "Remove discussion assignment (developer)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/assignments/{{developerUserId}}"
 					}
 				},
 				{

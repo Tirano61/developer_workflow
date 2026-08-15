@@ -11,6 +11,8 @@ class DiscussionFilters {
     this.tagIds = const [],
     this.createdBy,
     this.mine = false,
+    this.assignedToMe = false,
+    this.assignedDeveloperId,
   });
 
   final int page;
@@ -22,6 +24,8 @@ class DiscussionFilters {
   final List<String> tagIds;
   final String? createdBy;
   final bool mine;
+  final bool assignedToMe;
+  final String? assignedDeveloperId;
 
   DiscussionFilters copyWith({
     int? page,
@@ -36,6 +40,9 @@ class DiscussionFilters {
     String? createdBy,
     bool clearCreatedBy = false,
     bool? mine,
+    bool? assignedToMe,
+    String? assignedDeveloperId,
+    bool clearAssignedDeveloperId = false,
   }) {
     return DiscussionFilters(
       page: page ?? this.page,
@@ -47,6 +54,10 @@ class DiscussionFilters {
       tagIds: tagIds ?? this.tagIds,
       createdBy: clearCreatedBy ? null : createdBy ?? this.createdBy,
       mine: mine ?? this.mine,
+      assignedToMe: assignedToMe ?? this.assignedToMe,
+      assignedDeveloperId: clearAssignedDeveloperId
+          ? null
+          : assignedDeveloperId ?? this.assignedDeveloperId,
     );
   }
 }

@@ -15,6 +15,28 @@ abstract class DiscussionRemoteDataSource {
   Future<DiscussionModel> createDiscussion(DiscussionModel discussion);
 
   Future<DiscussionModel> updateDiscussion(DiscussionModel discussion);
+
+  Future<DiscussionModel> updateDiscussionStatus({
+    required String discussionId,
+    required DiscussionRecordStatus status,
+  });
+
+  Future<AssignableDeveloperListModel> getAssignableDevelopers();
+
+  Future<DiscussionModel> addDiscussionAssignments({
+    required String discussionId,
+    required List<String> developerUserIds,
+  });
+
+  Future<DiscussionModel> replaceDiscussionAssignments({
+    required String discussionId,
+    required List<String> developerUserIds,
+  });
+
+  Future<DiscussionModel> removeDiscussionAssignment({
+    required String discussionId,
+    required String developerUserId,
+  });
 }
 
 class DiscussionRemoteDataSourceImpl implements DiscussionRemoteDataSource {
@@ -71,6 +93,116 @@ class DiscussionRemoteDataSourceImpl implements DiscussionRemoteDataSource {
       ApiEndpoints.discussionById(Uri.encodeComponent(id)),
       body: payload,
     );
+
+    return _parseSingleDiscussion(response.data);
+  }
+
+  @override
+  Future<DiscussionModel> updateDiscussionStatus({
+    required String discussionId,
+    required DiscussionRecordStatus status,
+  }) async {
+    final normalizedDiscussionId = discussionId.trim();
+    if (normalizedDiscussionId.isEmpty) {
+      throw const ValidationException('A discussion id is required.');
+    }
+
+    final response = await _restClient.patch<Object?>(
+      ApiEndpoints.discussionStatusById(
+        Uri.encodeComponent(normalizedDiscussionId),
+      ),
+      body: <String, dynamic>{'status': status.apiValue},
+    );
+
+    if (response.data == null) {
+      return getDiscussionById(normalizedDiscussionId);
+    }
+
+    return _parseSingleDiscussion(response.data);
+  }
+
+  @override
+  Future<AssignableDeveloperListModel> getAssignableDevelopers() async {
+    final response = await _restClient.get<Object?>(ApiEndpoints.developers);
+    return AssignableDeveloperListModel.fromPayload(response.data);
+  }
+
+  @override
+  Future<DiscussionModel> addDiscussionAssignments({
+    required String discussionId,
+    required List<String> developerUserIds,
+  }) async {
+    final normalizedDiscussionId = discussionId.trim();
+    if (normalizedDiscussionId.isEmpty) {
+      throw const ValidationException('A discussion id is required.');
+    }
+
+    final response = await _restClient.post<Object?>(
+      ApiEndpoints.discussionAssignmentsById(
+        Uri.encodeComponent(normalizedDiscussionId),
+      ),
+      body: <String, dynamic>{
+        'developerUserIds': _normalizeIds(developerUserIds),
+      },
+    );
+
+    if (response.data == null) {
+      return getDiscussionById(normalizedDiscussionId);
+    }
+
+    return _parseSingleDiscussion(response.data);
+  }
+
+  @override
+  Future<DiscussionModel> replaceDiscussionAssignments({
+    required String discussionId,
+    required List<String> developerUserIds,
+  }) async {
+    final normalizedDiscussionId = discussionId.trim();
+    if (normalizedDiscussionId.isEmpty) {
+      throw const ValidationException('A discussion id is required.');
+    }
+
+    final response = await _restClient.put<Object?>(
+      ApiEndpoints.discussionAssignmentsById(
+        Uri.encodeComponent(normalizedDiscussionId),
+      ),
+      body: <String, dynamic>{
+        'developerUserIds': _normalizeIds(developerUserIds),
+      },
+    );
+
+    if (response.data == null) {
+      return getDiscussionById(normalizedDiscussionId);
+    }
+
+    return _parseSingleDiscussion(response.data);
+  }
+
+  @override
+  Future<DiscussionModel> removeDiscussionAssignment({
+    required String discussionId,
+    required String developerUserId,
+  }) async {
+    final normalizedDiscussionId = discussionId.trim();
+    final normalizedDeveloperUserId = developerUserId.trim();
+
+    if (normalizedDiscussionId.isEmpty || normalizedDeveloperUserId.isEmpty) {
+      throw const ValidationException(
+        'Discussion id and developer user id are required.',
+      );
+    }
+
+    final response = await _restClient.delete<Object?>(
+      ApiEndpoints.discussionAssignmentByIds(
+        Uri.encodeComponent(normalizedDiscussionId),
+        Uri.encodeComponent(normalizedDeveloperUserId),
+      ),
+    );
+
+    if (response.data == null) {
+      return getDiscussionById(normalizedDiscussionId);
+    }
 
     return _parseSingleDiscussion(response.data);
   }
@@ -132,6 +264,15 @@ class DiscussionRemoteDataSourceImpl implements DiscussionRemoteDataSource {
 
     if (filters.mine) {
       params['mine'] = true;
+    }
+
+    if (filters.assignedToMe) {
+      params['assignedToMe'] = true;
+    }
+
+    final assignedDeveloperId = filters.assignedDeveloperId?.trim();
+    if (assignedDeveloperId != null && assignedDeveloperId.isNotEmpty) {
+      params['assignedDeveloperId'] = assignedDeveloperId;
     }
 
     return params;

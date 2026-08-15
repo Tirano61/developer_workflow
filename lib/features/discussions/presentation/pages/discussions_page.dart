@@ -2,25 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/router/app_router.dart';
-import '../../../applications/domain/entities/application.dart';
-import '../../../applications/presentation/bloc/application_bloc.dart';
-import '../../../applications/presentation/bloc/application_event.dart';
-import '../../../applications/presentation/bloc/application_state.dart';
-import '../../../indicators/domain/entities/indicator.dart';
-import '../../../indicators/presentation/bloc/indicator_bloc.dart';
-import '../../../indicators/presentation/bloc/indicator_event.dart';
-import '../../../indicators/presentation/bloc/indicator_state.dart';
-import '../../../tags/domain/entities/tag.dart';
-import '../../../tags/presentation/bloc/tag_bloc.dart';
-import '../../../tags/presentation/bloc/tag_event.dart';
-import '../../../tags/presentation/bloc/tag_state.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../domain/entities/discussion.dart';
 import '../../domain/entities/discussion_filters.dart';
 import '../bloc/discussion_bloc.dart';
 import '../bloc/discussion_event.dart';
 import '../bloc/discussion_state.dart';
-import '../widgets/discussion_list_tile.dart';
+import '../widgets/discussion_board_card.dart';
+import 'discussion_detail_page.dart';
 import 'discussion_route_args.dart';
+
+enum _DiscussionViewFilter { all, mine, assignedToMe }
 
 class DiscussionsPage extends StatefulWidget {
   const DiscussionsPage({super.key});
@@ -30,562 +22,591 @@ class DiscussionsPage extends StatefulWidget {
 }
 
 class _DiscussionsPageState extends State<DiscussionsPage> {
-  final TextEditingController _idController = TextEditingController();
-  final TextEditingController _pageController = TextEditingController(
-    text: '1',
-  );
-  final TextEditingController _limitController = TextEditingController(
-    text: '20',
-  );
+  static const double _desktopBreakpoint = 980;
 
-  final Set<String> _selectedApplicationIds = <String>{};
-  final Set<String> _selectedIndicatorIds = <String>{};
-  final Set<String> _selectedTagIds = <String>{};
-
-  DiscussionType? _selectedType;
-  DiscussionRecordStatus? _selectedStatus;
-  bool _mine = false;
+  _DiscussionViewFilter _viewFilter = _DiscussionViewFilter.all;
+  DiscussionRecordStatus _mobileStatus = DiscussionRecordStatus.newDiscussion;
+  String? _selectedDiscussionId;
 
   @override
   void initState() {
     super.initState();
-    context.read<ApplicationBloc>().add(const LoadApplicationsEvent());
-    context.read<IndicatorBloc>().add(const LoadIndicatorsEvent());
-    context.read<TagBloc>().add(const LoadTagsEvent());
-    _requestList();
-  }
-
-  @override
-  void dispose() {
-    _idController.dispose();
-    _pageController.dispose();
-    _limitController.dispose();
-    super.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _requestDiscussions(forDesktop: _isDesktop(context));
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDeveloper = _isDeveloper(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Discussions')),
+      appBar: AppBar(
+        title: const Text('Develop Workflow'),
+        actions: [
+          IconButton(
+            tooltip: 'Nueva discussion',
+            onPressed: () async {
+              final changed = await Navigator.pushNamed(
+                context,
+                AppRoutes.discussionCreate,
+              );
+
+              if (!context.mounted) {
+                return;
+              }
+
+              if (changed == true) {
+                _requestDiscussions(forDesktop: _isDesktop(context));
+              }
+            },
+            icon: const Icon(Icons.add),
+          ),
+        ],
+      ),
       body: BlocConsumer<DiscussionBloc, DiscussionState>(
         listener: (context, state) {
-          final selected = state.selectedDiscussion;
-          if (selected != null &&
-              selected.id != null &&
-              selected.id!.isNotEmpty) {
-            _idController.text = selected.id!;
+          if (state.errorMessage.isNotEmpty) {
+            _showMessage(state.errorMessage);
+            context.read<DiscussionBloc>().add(
+              const ClearDiscussionOperationMessageEvent(),
+            );
           }
 
-          if (state.status == DiscussionStatus.error &&
-              state.errorMessage.isNotEmpty) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(state.errorMessage)));
+          if (state.operationMessage.isNotEmpty) {
+            _showMessage(state.operationMessage);
+            context.read<DiscussionBloc>().add(
+              const ClearDiscussionOperationMessageEvent(),
+            );
+          }
+
+          final selected = state.selectedDiscussion;
+          if (selected?.id != null && selected!.id!.isNotEmpty) {
+            setState(() {
+              _selectedDiscussionId = selected.id;
+            });
           }
         },
         builder: (context, state) {
-          final applicationState = context.watch<ApplicationBloc>().state;
-          final indicatorState = context.watch<IndicatorBloc>().state;
-          final tagState = context.watch<TagBloc>().state;
-          final bloc = context.read<DiscussionBloc>();
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                'Fase 3: listado y gestion de Discussions con filtros y paginacion.',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _idController,
-                decoration: const InputDecoration(
-                  labelText: 'ID discussion (detalle/edicion)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  SizedBox(
-                    width: 130,
-                    child: TextField(
-                      controller: _pageController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Page',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 130,
-                    child: TextField(
-                      controller: _limitController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Limit',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<DiscussionType?>(
-                key: ValueKey<DiscussionType?>(_selectedType),
-                initialValue: _selectedType,
-                items: [
-                  const DropdownMenuItem<DiscussionType?>(
-                    value: null,
-                    child: Text('Tipo: todos'),
-                  ),
-                  ...DiscussionType.values
-                      .where((type) => type != DiscussionType.unknown)
-                      .map(
-                        (type) => DropdownMenuItem<DiscussionType?>(
-                          value: type,
-                          child: Text(type.apiValue),
-                        ),
-                      ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedType = value;
-                  });
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Filtro type',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<DiscussionRecordStatus?>(
-                key: ValueKey<DiscussionRecordStatus?>(_selectedStatus),
-                initialValue: _selectedStatus,
-                items: [
-                  const DropdownMenuItem<DiscussionRecordStatus?>(
-                    value: null,
-                    child: Text('Estado: todos'),
-                  ),
-                  ...DiscussionRecordStatus.values
-                      .where(
-                        (status) => status != DiscussionRecordStatus.unknown,
-                      )
-                      .map(
-                        (status) => DropdownMenuItem<DiscussionRecordStatus?>(
-                          value: status,
-                          child: Text(status.apiValue),
-                        ),
-                      ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedStatus = value;
-                  });
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Filtro status',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildMultiSelectSection<Application>(
-                title: 'Filtro Applications',
-                subtitle: 'Filtra por una o varias applications.',
-                items: applicationState.applications,
-                selectedIds: _selectedApplicationIds,
-                isLoading: applicationState.status == ApplicationStatus.loading,
-                errorMessage: applicationState.status == ApplicationStatus.error
-                    ? applicationState.errorMessage
-                    : null,
-                idOf: (item) => item.id,
-                labelOf: (item) => item.name,
-                onRetry: () => context.read<ApplicationBloc>().add(
-                  const LoadApplicationsEvent(),
-                ),
-                onToggle: _toggleApplication,
-              ),
-              const SizedBox(height: 8),
-              _buildMultiSelectSection<Indicator>(
-                title: 'Filtro Indicators',
-                subtitle: 'Filtra por uno o varios indicators.',
-                items: indicatorState.indicators,
-                selectedIds: _selectedIndicatorIds,
-                isLoading: indicatorState.status == IndicatorStatus.loading,
-                errorMessage: indicatorState.status == IndicatorStatus.error
-                    ? indicatorState.errorMessage
-                    : null,
-                idOf: (item) => item.id,
-                labelOf: (item) => item.name,
-                onRetry: () => context.read<IndicatorBloc>().add(
-                  const LoadIndicatorsEvent(),
-                ),
-                onToggle: _toggleIndicator,
-              ),
-              const SizedBox(height: 8),
-              _buildMultiSelectSection<Tag>(
-                title: 'Filtro Tags',
-                subtitle: 'Filtra por tags de la discussion.',
-                items: tagState.tags,
-                selectedIds: _selectedTagIds,
-                isLoading: tagState.status == TagStatus.loading,
-                errorMessage: tagState.status == TagStatus.error
-                    ? tagState.errorMessage
-                    : null,
-                idOf: (item) => item.id,
-                labelOf: (item) => item.name,
-                onRetry: () =>
-                    context.read<TagBloc>().add(const LoadTagsEvent()),
-                onToggle: _toggleTag,
-              ),
-              const SizedBox(height: 4),
-              SwitchListTile.adaptive(
-                title: const Text('Solo mis discussions (mine=true)'),
-                value: _mine,
-                onChanged: (value) {
-                  setState(() {
-                    _mine = value;
-                  });
-                },
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ElevatedButton(
-                    onPressed: _requestList,
-                    child: const Text('Listar'),
-                  ),
-                  ElevatedButton(
-                    onPressed: _clearFilters,
-                    child: const Text('Limpiar filtros'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      final id = _idController.text.trim();
-                      if (id.isEmpty) {
-                        _showMessage(context, 'Ingresa un ID para consultar.');
-                        return;
-                      }
-                      bloc.add(LoadDiscussionEvent(id));
-                    },
-                    child: const Text('Obtener por ID'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final changed = await Navigator.pushNamed(
-                        context,
-                        AppRoutes.discussionCreate,
-                      );
+              if (state.status == DiscussionStatus.loading &&
+                  state.discussions.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-                      if (!mounted) {
-                        return;
-                      }
+              if (isDesktop) {
+                return _buildDesktopBoard(context, state, isDeveloper);
+              }
 
-                      if (changed == true) {
-                        _requestList();
-                      }
-                    },
-                    child: const Text('Nueva Discussion'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final selected = state.selectedDiscussion;
-                      if (selected == null) {
-                        _showMessage(
-                          context,
-                          'Selecciona una discussion o consulta por ID primero.',
-                        );
-                        return;
-                      }
-
-                      final changed = await Navigator.pushNamed(
-                        context,
-                        AppRoutes.discussionCreate,
-                        arguments: DiscussionEditorRouteArgs(
-                          discussion: selected,
-                          discussionId: selected.id,
-                        ),
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      if (changed == true) {
-                        _requestList();
-                      }
-                    },
-                    child: const Text('Editar seleccionada'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final id = _idController.text.trim();
-                      if (id.isEmpty) {
-                        _showMessage(
-                          context,
-                          'Ingresa un ID para ver detalle.',
-                        );
-                        return;
-                      }
-
-                      final changed = await Navigator.pushNamed(
-                        context,
-                        AppRoutes.discussionDetail,
-                        arguments: DiscussionDetailRouteArgs(discussionId: id),
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      if (changed == true) {
-                        _requestList();
-                      }
-                    },
-                    child: const Text('Ver detalle'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Estado: ${state.status.name}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              Text(
-                'Page ${state.page.page} | Limit ${state.page.limit} | '
-                'Total ${state.page.total} | TotalPages ${state.page.totalPages}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              if (state.status == DiscussionStatus.loading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: LinearProgressIndicator(),
-                ),
-              const SizedBox(height: 8),
-              if (state.discussions.isEmpty)
-                const Text('Sin datos de Discussions.')
-              else
-                ...state.discussions.map(
-                  (discussion) => DiscussionListTile(
-                    discussion: discussion,
-                    onOpenDetail: () async {
-                      if (discussion.id == null || discussion.id!.isEmpty) {
-                        _showMessage(
-                          context,
-                          'La discussion seleccionada no tiene id valido.',
-                        );
-                        return;
-                      }
-
-                      final changed = await Navigator.pushNamed(
-                        context,
-                        AppRoutes.discussionDetail,
-                        arguments: DiscussionDetailRouteArgs(
-                          discussionId: discussion.id!,
-                        ),
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      if (changed == true) {
-                        _requestList();
-                      }
-                    },
-                    onEdit: () async {
-                      final changed = await Navigator.pushNamed(
-                        context,
-                        AppRoutes.discussionCreate,
-                        arguments: DiscussionEditorRouteArgs(
-                          discussion: discussion,
-                          discussionId: discussion.id,
-                        ),
-                      );
-
-                      if (!mounted) {
-                        return;
-                      }
-
-                      if (changed == true) {
-                        _requestList();
-                      }
-                    },
-                  ),
-                ),
-            ],
+              return _buildMobileBoard(context, state, isDeveloper);
+            },
           );
         },
       ),
     );
   }
 
-  Widget _buildMultiSelectSection<T>({
+  Widget _buildDesktopBoard(
+    BuildContext context,
+    DiscussionState state,
+    bool isDeveloper,
+  ) {
+    final grouped = _groupByStatus(state.discussions);
+
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Column(
+            children: [
+              _buildBoardTopBar(context, isDeveloper: isDeveloper),
+              if (state.status == DiscussionStatus.loading)
+                const LinearProgressIndicator(),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Row(
+                    children: [
+                      _buildKanbanColumn(
+                        context,
+                        title: 'Entrada',
+                        status: DiscussionRecordStatus.newDiscussion,
+                        items:
+                            grouped[DiscussionRecordStatus.newDiscussion] ??
+                            const <Discussion>[],
+                        isDeveloper: isDeveloper,
+                        state: state,
+                      ),
+                      _buildKanbanColumn(
+                        context,
+                        title: 'Revision',
+                        status: DiscussionRecordStatus.review,
+                        items: grouped[DiscussionRecordStatus.review] ??
+                            const <Discussion>[],
+                        isDeveloper: isDeveloper,
+                        state: state,
+                      ),
+                      _buildKanbanColumn(
+                        context,
+                        title: 'Trabajando',
+                        status: DiscussionRecordStatus.inProgress,
+                        items:
+                            grouped[DiscussionRecordStatus.inProgress] ??
+                            const <Discussion>[],
+                        isDeveloper: isDeveloper,
+                        state: state,
+                      ),
+                      _buildKanbanColumn(
+                        context,
+                        title: 'Resuelto',
+                        status: DiscussionRecordStatus.resolved,
+                        items: grouped[DiscussionRecordStatus.resolved] ??
+                            const <Discussion>[],
+                        isDeveloper: isDeveloper,
+                        state: state,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(width: 1, color: Theme.of(context).dividerColor),
+        Expanded(
+          flex: 2,
+          child: _selectedDiscussionId == null
+              ? const Center(child: Text('Selecciona una discussion'))
+              : DiscussionDetailPage(
+                  discussionId: _selectedDiscussionId!,
+                  embedded: true,
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKanbanColumn(
+    BuildContext context, {
     required String title,
-    required String subtitle,
-    required List<T> items,
-    required Set<String> selectedIds,
-    required bool isLoading,
-    required String? errorMessage,
-    required String? Function(T item) idOf,
-    required String Function(T item) labelOf,
-    required VoidCallback onRetry,
-    required void Function(String id, bool selected) onToggle,
+    required DiscussionRecordStatus status,
+    required List<Discussion> items,
+    required bool isDeveloper,
+    required DiscussionState state,
   }) {
-    return Card(
+    return Expanded(
       child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(subtitle),
-            const SizedBox(height: 8),
-            if (isLoading && items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: LinearProgressIndicator(),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Text(
+                  '$title (${items.length})',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
-            if (errorMessage != null && errorMessage.trim().isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    errorMessage,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: onRetry,
-                    child: const Text('Reintentar carga'),
-                  ),
-                  const SizedBox(height: 8),
-                ],
+              const Divider(height: 1),
+              Expanded(
+                child: items.isEmpty
+                    ? const Center(child: Text('Sin discussions'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final discussion = items[index];
+                          return DiscussionBoardCard(
+                            discussion: discussion,
+                            isDeveloper: isDeveloper,
+                            isBusy: _isDiscussionBusy(state, discussion.id),
+                            onOpen: () => _openDiscussionFromBoard(
+                              discussionId: discussion.id,
+                              desktopSelection: true,
+                            ),
+                            onManageAssignments: () =>
+                                _openAssignmentsDialog(discussion),
+                            onAssignToMe: () => _assignToMe(discussion),
+                            onChangeStatus: (nextStatus) =>
+                                _changeDiscussionStatus(discussion, nextStatus),
+                          );
+                        },
+                      ),
               ),
-            if (!isLoading && items.isEmpty)
-              const Text('No hay opciones disponibles.'),
-            if (items.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: items
-                    .map((item) {
-                      final id = idOf(item)?.trim();
-                      if (id == null || id.isEmpty) {
-                        return null;
-                      }
-
-                      final label = labelOf(item).trim();
-                      final selected = selectedIds.contains(id);
-
-                      return FilterChip(
-                        label: Text(label.isEmpty ? id : label),
-                        selected: selected,
-                        onSelected: (value) => onToggle(id, value),
-                      );
-                    })
-                    .whereType<Widget>()
-                    .toList(growable: false),
-              ),
-            const SizedBox(height: 8),
-            Text('Seleccionados: ${selectedIds.length}'),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _toggleApplication(String id, bool selected) {
-    setState(() {
-      if (selected) {
-        _selectedApplicationIds.add(id);
-      } else {
-        _selectedApplicationIds.remove(id);
-      }
-    });
-  }
+  Widget _buildMobileBoard(
+    BuildContext context,
+    DiscussionState state,
+    bool isDeveloper,
+  ) {
+    return Column(
+      children: [
+        _buildBoardTopBar(context, isDeveloper: isDeveloper),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: DropdownButtonFormField<DiscussionRecordStatus>(
+            initialValue: _mobileStatus,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              labelText: 'Estado',
+            ),
+            items: DiscussionRecordStatus.values
+                .where((status) => status != DiscussionRecordStatus.unknown)
+                .map(
+                  (status) => DropdownMenuItem<DiscussionRecordStatus>(
+                    value: status,
+                    child: Text(_statusLabel(status)),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (status) {
+              if (status == null) {
+                return;
+              }
 
-  void _toggleIndicator(String id, bool selected) {
-    setState(() {
-      if (selected) {
-        _selectedIndicatorIds.add(id);
-      } else {
-        _selectedIndicatorIds.remove(id);
-      }
-    });
-  }
+              setState(() {
+                _mobileStatus = status;
+              });
 
-  void _toggleTag(String id, bool selected) {
-    setState(() {
-      if (selected) {
-        _selectedTagIds.add(id);
-      } else {
-        _selectedTagIds.remove(id);
-      }
-    });
-  }
-
-  void _requestList() {
-    final filters = _buildFilters();
-    context.read<DiscussionBloc>().add(LoadDiscussionsEvent(filters: filters));
-  }
-
-  DiscussionFilters _buildFilters() {
-    return DiscussionFilters(
-      page: _parsePositiveInt(_pageController.text, fallback: 1),
-      limit: _parsePositiveInt(_limitController.text, fallback: 20),
-      type: _selectedType,
-      status: _selectedStatus,
-      applicationIds: _sortedIds(_selectedApplicationIds),
-      indicatorIds: _sortedIds(_selectedIndicatorIds),
-      tagIds: _sortedIds(_selectedTagIds),
-      mine: _mine,
+              _requestDiscussions(forDesktop: false);
+            },
+          ),
+        ),
+        if (state.status == DiscussionStatus.loading)
+          const LinearProgressIndicator(),
+        Expanded(
+          child: state.discussions.isEmpty
+              ? const Center(child: Text('Sin discussions para este estado.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(10),
+                  itemCount: state.discussions.length,
+                  itemBuilder: (context, index) {
+                    final discussion = state.discussions[index];
+                    return DiscussionBoardCard(
+                      discussion: discussion,
+                      isDeveloper: isDeveloper,
+                      isBusy: _isDiscussionBusy(state, discussion.id),
+                      onOpen: () => _openDiscussionFromBoard(
+                        discussionId: discussion.id,
+                        desktopSelection: false,
+                      ),
+                      onManageAssignments: () => _openAssignmentsDialog(discussion),
+                      onAssignToMe: () => _assignToMe(discussion),
+                      onChangeStatus: (nextStatus) =>
+                          _changeDiscussionStatus(discussion, nextStatus),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
-  void _clearFilters() {
+  Widget _buildBoardTopBar(
+    BuildContext context, {
+    required bool isDeveloper,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      child: Row(
+        children: [
+          ChoiceChip(
+            label: const Text('Todas'),
+            selected: _viewFilter == _DiscussionViewFilter.all,
+            onSelected: (_) => _setViewFilter(_DiscussionViewFilter.all),
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text('Creadas por mi'),
+            selected: _viewFilter == _DiscussionViewFilter.mine,
+            onSelected: (_) => _setViewFilter(_DiscussionViewFilter.mine),
+          ),
+          if (isDeveloper) ...[
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('Asignadas a mi'),
+              selected: _viewFilter == _DiscussionViewFilter.assignedToMe,
+              onSelected: (_) =>
+                  _setViewFilter(_DiscussionViewFilter.assignedToMe),
+            ),
+          ],
+          const Spacer(),
+          IconButton(
+            tooltip: 'Recargar',
+            onPressed: () => _requestDiscussions(forDesktop: _isDesktop(context)),
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _setViewFilter(_DiscussionViewFilter filter) {
+    if (_viewFilter == filter) {
+      return;
+    }
+
     setState(() {
-      _pageController.text = '1';
-      _limitController.text = '20';
-      _selectedType = null;
-      _selectedStatus = null;
-      _mine = false;
-      _selectedApplicationIds.clear();
-      _selectedIndicatorIds.clear();
-      _selectedTagIds.clear();
+      _viewFilter = filter;
     });
 
-    _requestList();
+    _requestDiscussions(forDesktop: _isDesktop(context));
   }
 
-  int _parsePositiveInt(String value, {required int fallback}) {
-    final parsed = int.tryParse(value.trim());
-    if (parsed == null || parsed <= 0) {
-      return fallback;
+  void _requestDiscussions({required bool forDesktop}) {
+    final filters = _buildFilters(forDesktop: forDesktop);
+    context.read<DiscussionBloc>().add(LoadDiscussionsEvent(filters: filters));
+  }
+
+  DiscussionFilters _buildFilters({required bool forDesktop}) {
+    final statusFilter = forDesktop ? null : _mobileStatus;
+
+    return DiscussionFilters(
+      page: 1,
+      limit: 100,
+      status: statusFilter,
+      mine: _viewFilter == _DiscussionViewFilter.mine,
+      assignedToMe: _viewFilter == _DiscussionViewFilter.assignedToMe,
+    );
+  }
+
+  Map<DiscussionRecordStatus, List<Discussion>> _groupByStatus(
+    List<Discussion> discussions,
+  ) {
+    final grouped = <DiscussionRecordStatus, List<Discussion>>{
+      DiscussionRecordStatus.newDiscussion: <Discussion>[],
+      DiscussionRecordStatus.review: <Discussion>[],
+      DiscussionRecordStatus.inProgress: <Discussion>[],
+      DiscussionRecordStatus.resolved: <Discussion>[],
+    };
+
+    for (final discussion in discussions) {
+      final status = discussion.status;
+      if (!grouped.containsKey(status)) {
+        continue;
+      }
+      grouped[status]!.add(discussion);
     }
-    return parsed;
+
+    return grouped;
   }
 
-  List<String> _sortedIds(Set<String> values) {
-    final list = values
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
+  bool _isDeveloper(BuildContext context) {
+    final user = context.read<AuthBloc>().state.session?.user;
+    return user?.isDeveloper ?? false;
+  }
+
+  bool _isDesktop(BuildContext context) {
+    return MediaQuery.sizeOf(context).width >= _desktopBreakpoint;
+  }
+
+  bool _isDiscussionBusy(DiscussionState state, String? discussionId) {
+    if (discussionId == null || discussionId.isEmpty) {
+      return false;
+    }
+
+    return state.operationDiscussionId == discussionId &&
+        (state.isUpdatingAssignments || state.isUpdatingStatus);
+  }
+
+  Future<void> _openDiscussionFromBoard({
+    required String? discussionId,
+    required bool desktopSelection,
+  }) async {
+    if (discussionId == null || discussionId.isEmpty) {
+      return;
+    }
+
+    if (desktopSelection) {
+      setState(() {
+        _selectedDiscussionId = discussionId;
+      });
+      context.read<DiscussionBloc>().add(SelectDiscussionEvent(discussionId));
+      context.read<DiscussionBloc>().add(LoadDiscussionEvent(discussionId));
+      return;
+    }
+
+    final changed = await Navigator.pushNamed(
+      context,
+      AppRoutes.discussionDetail,
+      arguments: DiscussionDetailRouteArgs(discussionId: discussionId),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (changed == true) {
+      _requestDiscussions(forDesktop: false);
+    }
+  }
+
+  void _changeDiscussionStatus(
+    Discussion discussion,
+    DiscussionRecordStatus nextStatus,
+  ) {
+    final discussionId = discussion.id;
+    if (discussionId == null || discussionId.isEmpty) {
+      return;
+    }
+
+    context.read<DiscussionBloc>().add(
+      ChangeDiscussionStatusEvent(discussionId: discussionId, status: nextStatus),
+    );
+  }
+
+  void _assignToMe(Discussion discussion) {
+    final discussionId = discussion.id;
+    final currentUser = context.read<AuthBloc>().state.session?.user;
+
+    if (discussionId == null || discussionId.isEmpty || currentUser == null) {
+      return;
+    }
+
+    context.read<DiscussionBloc>().add(
+      AssignDiscussionToMeEvent(
+        discussionId: discussionId,
+        currentDeveloperUserId: currentUser.id,
+      ),
+    );
+  }
+
+  Future<void> _openAssignmentsDialog(Discussion discussion) async {
+    final discussionId = discussion.id;
+    if (discussionId == null || discussionId.isEmpty) {
+      return;
+    }
+
+    final bloc = context.read<DiscussionBloc>();
+    bloc.add(const LoadAssignableDevelopersEvent());
+
+    final selectedIds = discussion.assignedDevelopers
+        .map((developer) => developer.id)
+        .toSet();
+
+    final savedIds = await showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) {
+        return BlocProvider.value(
+          value: bloc,
+          child: StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              return AlertDialog(
+                title: const Text('Asignar developers'),
+                content: SizedBox(
+                  width: 420,
+                  child: BlocBuilder<DiscussionBloc, DiscussionState>(
+                    builder: (context, state) {
+                      if (state.isLoadingAssignableDevelopers &&
+                          state.assignableDevelopers.isEmpty) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if (state.assignableDevelopers.isEmpty) {
+                        return const Text('No hay developers disponibles.');
+                      }
+
+                      return SingleChildScrollView(
+                        child: Column(
+                          children: state.assignableDevelopers
+                              .map(
+                                (developer) => CheckboxListTile(
+                                  dense: true,
+                                  value: selectedIds.contains(developer.id),
+                                  title: Text(developer.fullName),
+                                  subtitle: developer.email == null
+                                      ? null
+                                      : Text(developer.email!),
+                                  onChanged: (checked) {
+                                    setDialogState(() {
+                                      if (checked == true) {
+                                        selectedIds.add(developer.id);
+                                      } else {
+                                        selectedIds.remove(developer.id);
+                                      }
+                                    });
+                                  },
+                                ),
+                              )
+                              .toList(growable: false),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancelar'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(
+                      dialogContext,
+                      Set<String>.from(selectedIds),
+                    ),
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    if (!mounted || savedIds == null) {
+      return;
+    }
+
+    bloc.add(
+      ReplaceDiscussionAssignmentsEvent(
+        discussionId: discussionId,
+        developerUserIds: _sortedIds(savedIds),
+      ),
+    );
+  }
+
+  List<String> _sortedIds(Set<String> ids) {
+    final list = ids
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
         .toList(growable: false);
 
     final sorted = List<String>.from(list)..sort();
     return sorted;
   }
 
-  void _showMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  String _statusLabel(DiscussionRecordStatus status) {
+    switch (status) {
+      case DiscussionRecordStatus.newDiscussion:
+        return 'Entrada';
+      case DiscussionRecordStatus.review:
+        return 'Revision';
+      case DiscussionRecordStatus.inProgress:
+        return 'Trabajando';
+      case DiscussionRecordStatus.resolved:
+        return 'Resuelto';
+      case DiscussionRecordStatus.unknown:
+        return 'Desconocido';
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 }

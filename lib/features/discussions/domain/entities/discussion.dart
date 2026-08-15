@@ -1,5 +1,6 @@
 import '../../../applications/domain/entities/application.dart';
 import '../../../indicators/domain/entities/indicator.dart';
+import 'discussion_developer.dart';
 
 enum DiscussionType { error, idea, improvement, question, unknown }
 
@@ -128,6 +129,7 @@ class Discussion {
     this.id,
     required this.type,
     required this.title,
+    this.initialMessageContent,
     this.status = DiscussionRecordStatus.newDiscussion,
     this.createdBy,
     this.createdAt,
@@ -138,11 +140,13 @@ class Discussion {
     this.applicationIds = const [],
     this.indicatorIds = const [],
     this.tagIds = const [],
+    this.assignedDevelopers = const [],
   });
 
   final String? id;
   final DiscussionType type;
   final String title;
+  final String? initialMessageContent;
   final DiscussionRecordStatus status;
   final DiscussionCreator? createdBy;
   final DateTime? createdAt;
@@ -153,6 +157,7 @@ class Discussion {
   final List<String> applicationIds;
   final List<String> indicatorIds;
   final List<String> tagIds;
+  final List<DiscussionAssignedDeveloper> assignedDevelopers;
 
   List<String> get resolvedApplicationIds {
     final ids = <String>{
@@ -183,6 +188,7 @@ class Discussion {
     String? id,
     DiscussionType? type,
     String? title,
+    String? initialMessageContent,
     DiscussionRecordStatus? status,
     DiscussionCreator? createdBy,
     bool clearCreatedBy = false,
@@ -194,11 +200,14 @@ class Discussion {
     List<String>? applicationIds,
     List<String>? indicatorIds,
     List<String>? tagIds,
+    List<DiscussionAssignedDeveloper>? assignedDevelopers,
   }) {
     return Discussion(
       id: id ?? this.id,
       type: type ?? this.type,
       title: title ?? this.title,
+      initialMessageContent:
+          initialMessageContent ?? this.initialMessageContent,
       status: status ?? this.status,
       createdBy: clearCreatedBy ? null : createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
@@ -209,6 +218,7 @@ class Discussion {
       applicationIds: applicationIds ?? this.applicationIds,
       indicatorIds: indicatorIds ?? this.indicatorIds,
       tagIds: tagIds ?? this.tagIds,
+      assignedDevelopers: assignedDevelopers ?? this.assignedDevelopers,
     );
   }
 }
