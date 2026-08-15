@@ -149,6 +149,8 @@ Autenticacion:
   - tagIds (CSV de UUIDs)
   - createdBy (UUID de usuario)
   - mine (true|false)
+  - assignedToMe (true|false)
+  - assignedDeveloperId (UUID de developer asignado)
 
 ### GET /develop-workflow/discussions/:id
 - Auth: Usuario autenticado
@@ -167,6 +169,44 @@ Autenticacion:
   "tagIds": ["{{tagId}}"]
 }
 ```
+
+### PATCH /develop-workflow/discussions/:id/status
+- Auth: Developer
+- Descripcion: Cambia el estado Kanban de la discussion. No impone flujo lineal de transicion.
+- Body:
+```json
+{
+  "status": "IN_PROGRESS"
+}
+```
+
+### GET /develop-workflow/developers
+- Auth: Usuario autenticado
+- Descripcion: Lista usuarios activos asignables como developers (id, fullName, email).
+
+### POST /develop-workflow/discussions/:id/assignments
+- Auth: Developer
+- Descripcion: Agrega developers asignados (sin duplicar).
+- Body:
+```json
+{
+  "developerUserIds": ["{{developerUserId}}"]
+}
+```
+
+### PUT /develop-workflow/discussions/:id/assignments
+- Auth: Developer
+- Descripcion: Reemplaza completamente la coleccion de developers asignados.
+- Body:
+```json
+{
+  "developerUserIds": ["{{developerUserId}}"]
+}
+```
+
+### DELETE /develop-workflow/discussions/:id/assignments/:developerUserId
+- Auth: Developer
+- Descripcion: Quita un developer asignado de la discussion.
 
 ## Discussion relations (Developer)
 
@@ -289,3 +329,4 @@ Autenticacion:
 - discussionId: UUID valido de dw_discussions
 - tagId: UUID valido de dw_tags
 - messageId: UUID valido de dw_discussion_messages
+- developerUserId: UUID valido de users con rol developer

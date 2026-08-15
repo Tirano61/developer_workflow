@@ -21,10 +21,15 @@ import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/discussions/data/datasources/discussion_remote_data_source.dart';
 import '../../features/discussions/data/repositories/discussion_repository_impl.dart';
 import '../../features/discussions/domain/repositories/discussion_repository.dart';
+import '../../features/discussions/domain/usecases/add_discussion_assignments.dart';
 import '../../features/discussions/domain/usecases/create_discussion.dart';
+import '../../features/discussions/domain/usecases/get_assignable_developers.dart';
 import '../../features/discussions/domain/usecases/get_discussion.dart';
 import '../../features/discussions/domain/usecases/get_discussions.dart';
+import '../../features/discussions/domain/usecases/remove_discussion_assignment.dart';
+import '../../features/discussions/domain/usecases/replace_discussion_assignments.dart';
 import '../../features/discussions/domain/usecases/update_discussion.dart';
+import '../../features/discussions/domain/usecases/update_discussion_status.dart';
 import '../../features/discussions/presentation/bloc/discussion_bloc.dart';
 import '../../features/discussion_messages/data/datasources/discussion_message_remote_data_source.dart';
 import '../../features/discussion_messages/data/repositories/discussion_message_repository_impl.dart';
@@ -210,12 +215,32 @@ Future<void> configureDependencies() async {
   sl.registerLazySingleton<UpdateDiscussion>(
     () => UpdateDiscussion(sl<DiscussionRepository>()),
   );
+  sl.registerLazySingleton<UpdateDiscussionStatus>(
+    () => UpdateDiscussionStatus(sl<DiscussionRepository>()),
+  );
+  sl.registerLazySingleton<GetAssignableDevelopers>(
+    () => GetAssignableDevelopers(sl<DiscussionRepository>()),
+  );
+  sl.registerLazySingleton<AddDiscussionAssignments>(
+    () => AddDiscussionAssignments(sl<DiscussionRepository>()),
+  );
+  sl.registerLazySingleton<ReplaceDiscussionAssignments>(
+    () => ReplaceDiscussionAssignments(sl<DiscussionRepository>()),
+  );
+  sl.registerLazySingleton<RemoveDiscussionAssignment>(
+    () => RemoveDiscussionAssignment(sl<DiscussionRepository>()),
+  );
   sl.registerFactory<DiscussionBloc>(
     () => DiscussionBloc(
       getDiscussions: sl<GetDiscussions>(),
       getDiscussion: sl<GetDiscussion>(),
       createDiscussion: sl<CreateDiscussion>(),
       updateDiscussion: sl<UpdateDiscussion>(),
+      updateDiscussionStatus: sl<UpdateDiscussionStatus>(),
+      getAssignableDevelopers: sl<GetAssignableDevelopers>(),
+      addDiscussionAssignments: sl<AddDiscussionAssignments>(),
+      replaceDiscussionAssignments: sl<ReplaceDiscussionAssignments>(),
+      removeDiscussionAssignment: sl<RemoveDiscussionAssignment>(),
     ),
   );
 

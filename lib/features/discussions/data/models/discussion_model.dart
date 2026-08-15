@@ -2,7 +2,74 @@ import '../../../../core/error/exceptions.dart';
 import '../../../applications/data/models/application_model.dart';
 import '../../../indicators/data/models/indicator_model.dart';
 import '../../domain/entities/discussion.dart';
+import '../../domain/entities/discussion_developer.dart';
 import '../../domain/entities/discussion_page.dart';
+
+class DiscussionAssignedDeveloperModel {
+  const DiscussionAssignedDeveloperModel({
+    required this.id,
+    required this.fullName,
+    this.email,
+  });
+
+  final String id;
+  final String fullName;
+  final String? email;
+
+  factory DiscussionAssignedDeveloperModel.fromJson(Map<String, dynamic> json) {
+    final id = _readString(json, const ['id', '_id', 'uuid', 'userId']);
+    final fullName = _readString(json, const ['fullName', 'full_name', 'name']);
+
+    if (id == null || id.isEmpty || fullName == null || fullName.isEmpty) {
+      throw const DataParsingException(
+        'Assigned developer fields are missing in backend payload.',
+      );
+    }
+
+    return DiscussionAssignedDeveloperModel(
+      id: id,
+      fullName: fullName,
+      email: _readString(json, const ['email', 'mail']),
+    );
+  }
+
+  DiscussionAssignedDeveloper toEntity() {
+    return DiscussionAssignedDeveloper(id: id, fullName: fullName);
+  }
+}
+
+class AssignableDeveloperModel {
+  const AssignableDeveloperModel({
+    required this.id,
+    required this.fullName,
+    this.email,
+  });
+
+  final String id;
+  final String fullName;
+  final String? email;
+
+  factory AssignableDeveloperModel.fromJson(Map<String, dynamic> json) {
+    final id = _readString(json, const ['id', '_id', 'uuid', 'userId']);
+    final fullName = _readString(json, const ['fullName', 'full_name', 'name']);
+
+    if (id == null || id.isEmpty || fullName == null || fullName.isEmpty) {
+      throw const DataParsingException(
+        'Assignable developer fields are missing in backend payload.',
+      );
+    }
+
+    return AssignableDeveloperModel(
+      id: id,
+      fullName: fullName,
+      email: _readString(json, const ['email', 'mail']),
+    );
+  }
+
+  AssignableDeveloper toEntity() {
+    return AssignableDeveloper(id: id, fullName: fullName, email: email);
+  }
+}
 
 class DiscussionCreatorModel {
   const DiscussionCreatorModel({required this.id, this.email, this.fullName});
@@ -99,6 +166,7 @@ class DiscussionModel {
     this.id,
     required this.type,
     required this.title,
+    this.initialMessageContent,
     this.status = DiscussionRecordStatus.newDiscussion,
     this.createdBy,
     this.createdAt,
@@ -109,11 +177,13 @@ class DiscussionModel {
     this.applicationIds = const [],
     this.indicatorIds = const [],
     this.tagIds = const [],
+    this.assignedDevelopers = const [],
   });
 
   final String? id;
   final DiscussionType type;
   final String title;
+  final String? initialMessageContent;
   final DiscussionRecordStatus status;
   final DiscussionCreatorModel? createdBy;
   final DateTime? createdAt;
@@ -124,6 +194,7 @@ class DiscussionModel {
   final List<String> applicationIds;
   final List<String> indicatorIds;
   final List<String> tagIds;
+  final List<DiscussionAssignedDeveloperModel> assignedDevelopers;
 
   factory DiscussionModel.fromJson(Map<String, dynamic> json) {
     final applications = _readApplicationModels(json);
@@ -139,6 +210,7 @@ class DiscussionModel {
       'indicator_ids',
     ]);
     final parsedTagIds = _readStringList(json, const ['tagIds', 'tag_ids']);
+    final assignedDevelopers = _readAssignedDeveloperModels(json);
 
     return DiscussionModel(
       id: _readString(json, const ['id', '_id', 'uuid']),
@@ -171,6 +243,7 @@ class DiscussionModel {
         parsedTagIds,
         tags.map((tag) => tag.id).toList(growable: false),
       ),
+      assignedDevelopers: assignedDevelopers,
     );
   }
 
@@ -198,6 +271,12 @@ class DiscussionModel {
       ),
     };
 
+    final normalizedInitialMessage = initialMessageContent?.trim();
+    if (normalizedInitialMessage != null &&
+        normalizedInitialMessage.isNotEmpty) {
+      payload['initialMessageContent'] = normalizedInitialMessage;
+    }
+
     if (id != null && id!.isNotEmpty) {
       payload['id'] = id;
     }
@@ -210,6 +289,7 @@ class DiscussionModel {
       id: id,
       type: type,
       title: title,
+      initialMessageContent: initialMessageContent,
       status: status,
       createdBy: createdBy?.toEntity(),
       createdAt: createdAt,
@@ -224,6 +304,9 @@ class DiscussionModel {
       applicationIds: applicationIds,
       indicatorIds: indicatorIds,
       tagIds: tagIds,
+      assignedDevelopers: assignedDevelopers
+          .map((developer) => developer.toEntity())
+          .toList(growable: false),
     );
   }
 
@@ -232,6 +315,7 @@ class DiscussionModel {
       id: entity.id,
       type: entity.type,
       title: entity.title,
+      initialMessageContent: entity.initialMessageContent,
       status: entity.status,
       createdBy: entity.createdBy != null
           ? DiscussionCreatorModel.fromEntity(entity.createdBy!)
@@ -250,6 +334,14 @@ class DiscussionModel {
       applicationIds: entity.resolvedApplicationIds,
       indicatorIds: entity.resolvedIndicatorIds,
       tagIds: entity.resolvedTagIds,
+      assignedDevelopers: entity.assignedDevelopers
+          .map(
+            (developer) => DiscussionAssignedDeveloperModel(
+              id: developer.id,
+              fullName: developer.fullName,
+            ),
+          )
+          .toList(growable: false),
     );
   }
 
@@ -317,6 +409,25 @@ class DiscussionModel {
 
     return list
         .map((item) => DiscussionTagModel.fromJson(_asMap(item)))
+        .toList(growable: false);
+  }
+
+  static List<DiscussionAssignedDeveloperModel> _readAssignedDeveloperModels(
+    Map<String, dynamic> json,
+  ) {
+    final list = _readList(json, const [
+      'assignedDevelopers',
+      'assigned_developers',
+      'developers',
+      'assignees',
+    ]);
+
+    if (list == null) {
+      return const [];
+    }
+
+    return list
+        .map((item) => DiscussionAssignedDeveloperModel.fromJson(_asMap(item)))
         .toList(growable: false);
   }
 }
@@ -414,6 +525,45 @@ class DiscussionPageModel {
   }
 }
 
+class AssignableDeveloperListModel {
+  const AssignableDeveloperListModel({required this.data});
+
+  final List<AssignableDeveloperModel> data;
+
+  factory AssignableDeveloperListModel.fromPayload(Object? payload) {
+    if (payload is List) {
+      return AssignableDeveloperListModel(
+        data: payload
+            .map((item) => AssignableDeveloperModel.fromJson(_asMap(item)))
+            .toList(growable: false),
+      );
+    }
+
+    if (payload is Map<String, dynamic>) {
+      final rawList = _extractList(payload, const [
+        'data',
+        'developers',
+        'items',
+        'results',
+      ]);
+
+      return AssignableDeveloperListModel(
+        data: rawList
+            .map((item) => AssignableDeveloperModel.fromJson(_asMap(item)))
+            .toList(growable: false),
+      );
+    }
+
+    throw const DataParsingException(
+      'Unexpected payload format for assignable developers response.',
+    );
+  }
+
+  List<AssignableDeveloper> toEntity() {
+    return data.map((item) => item.toEntity()).toList(growable: false);
+  }
+}
+
 Map<String, dynamic> _asMap(Object? value) {
   if (value is Map<String, dynamic>) {
     return value;
@@ -431,6 +581,17 @@ Object? _readFirst(Map<String, dynamic> json, List<String> keys) {
     }
   }
   return null;
+}
+
+List<dynamic> _extractList(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final value = json[key];
+    if (value is List) {
+      return value;
+    }
+  }
+
+  throw const DataParsingException('Expected a list value in backend payload.');
 }
 
 String? _readString(Map<String, dynamic> json, List<String> keys) {

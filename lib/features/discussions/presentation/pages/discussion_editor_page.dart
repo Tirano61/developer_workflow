@@ -5,10 +5,6 @@ import '../../../applications/domain/entities/application.dart';
 import '../../../applications/presentation/bloc/application_bloc.dart';
 import '../../../applications/presentation/bloc/application_event.dart';
 import '../../../applications/presentation/bloc/application_state.dart';
-import '../../../discussion_messages/domain/entities/discussion_message.dart';
-import '../../../discussion_messages/presentation/bloc/discussion_message_bloc.dart';
-import '../../../discussion_messages/presentation/bloc/discussion_message_event.dart';
-import '../../../discussion_messages/presentation/bloc/discussion_message_state.dart';
 import '../../../indicators/domain/entities/indicator.dart';
 import '../../../indicators/presentation/bloc/indicator_bloc.dart';
 import '../../../indicators/presentation/bloc/indicator_event.dart';
@@ -22,12 +18,7 @@ import '../bloc/discussion_bloc.dart';
 import '../bloc/discussion_event.dart';
 import '../bloc/discussion_state.dart';
 
-enum _SubmitFlowStage {
-  idle,
-  creatingDiscussion,
-  creatingInitialMessage,
-  updatingDiscussion,
-}
+enum _SubmitFlowStage { idle, creatingDiscussion, updatingDiscussion }
 
 class DiscussionEditorPage extends StatefulWidget {
   const DiscussionEditorPage({
@@ -57,7 +48,6 @@ class _DiscussionEditorPageState extends State<DiscussionEditorPage> {
   DiscussionRecordStatus _status = DiscussionRecordStatus.newDiscussion;
   bool _submitInProgress = false;
   _SubmitFlowStage _submitFlowStage = _SubmitFlowStage.idle;
-  String? _pendingInitialMessage;
 
   @override
   void initState() {
@@ -98,23 +88,15 @@ class _DiscussionEditorPageState extends State<DiscussionEditorPage> {
           BlocListener<DiscussionBloc, DiscussionState>(
             listener: _onDiscussionStateChanged,
           ),
-          BlocListener<DiscussionMessageBloc, DiscussionMessageState>(
-            listener: _onDiscussionMessageStateChanged,
-          ),
         ],
         child: BlocBuilder<DiscussionBloc, DiscussionState>(
           builder: (context, state) {
-            final messageState = context.watch<DiscussionMessageBloc>().state;
             final applicationState = context.watch<ApplicationBloc>().state;
             final indicatorState = context.watch<IndicatorBloc>().state;
             final tagState = context.watch<TagBloc>().state;
 
             final isLoading = state.status == DiscussionStatus.loading;
-            final isBusy =
-                isLoading ||
-                _submitInProgress ||
-                messageState.isSending ||
-                messageState.isUpdating;
+            final isBusy = isLoading || _submitInProgress;
 
             return ListView(
               padding: const EdgeInsets.all(16),
@@ -401,7 +383,6 @@ class _DiscussionEditorPageState extends State<DiscussionEditorPage> {
         state.errorMessage.isNotEmpty) {
       _submitInProgress = false;
       _submitFlowStage = _SubmitFlowStage.idle;
-      _pendingInitialMessage = null;
       _showMessage(state.errorMessage);
       return;
     }
@@ -410,65 +391,12 @@ class _DiscussionEditorPageState extends State<DiscussionEditorPage> {
       return;
     }
 
-    if (_submitFlowStage == _SubmitFlowStage.updatingDiscussion) {
-      _finishSubmitWithSuccess();
+    if (_submitFlowStage != _SubmitFlowStage.creatingDiscussion &&
+        _submitFlowStage != _SubmitFlowStage.updatingDiscussion) {
       return;
     }
 
-    if (_submitFlowStage != _SubmitFlowStage.creatingDiscussion) {
-      return;
-    }
-
-    final created = state.selectedDiscussion;
-    final createdId = created?.id?.trim();
-    if (createdId == null || createdId.isEmpty) {
-      _submitInProgress = false;
-      _submitFlowStage = _SubmitFlowStage.idle;
-      _pendingInitialMessage = null;
-      _showMessage(
-        'La discussion se creo sin id valido. No se pudo crear el mensaje inicial.',
-      );
-      return;
-    }
-
-    final initialMessage = _pendingInitialMessage?.trim();
-    if (initialMessage == null || initialMessage.isEmpty) {
-      _finishSubmitWithSuccess();
-      return;
-    }
-
-    _submitFlowStage = _SubmitFlowStage.creatingInitialMessage;
-    context.read<DiscussionMessageBloc>().add(
-      CreateDiscussionMessageEvent(
-        discussionId: createdId,
-        type: DiscussionMessageType.text,
-        content: initialMessage,
-      ),
-    );
-  }
-
-  void _onDiscussionMessageStateChanged(
-    BuildContext context,
-    DiscussionMessageState state,
-  ) {
-    if (_submitFlowStage != _SubmitFlowStage.creatingInitialMessage) {
-      return;
-    }
-
-    if (state.status == DiscussionMessageStatus.error &&
-        state.errorMessage.isNotEmpty &&
-        !state.isSending) {
-      _submitInProgress = false;
-      _submitFlowStage = _SubmitFlowStage.idle;
-      _showMessage(
-        'La discussion se creo, pero fallo el mensaje inicial: ${state.errorMessage}',
-      );
-      return;
-    }
-
-    if (!state.isSending && state.status == DiscussionMessageStatus.success) {
-      _finishSubmitWithSuccess();
-    }
+    _finishSubmitWithSuccess();
   }
 
   bool get _isEditing => _idController.text.trim().isNotEmpty;
@@ -476,7 +404,6 @@ class _DiscussionEditorPageState extends State<DiscussionEditorPage> {
   void _finishSubmitWithSuccess() {
     _submitInProgress = false;
     _submitFlowStage = _SubmitFlowStage.idle;
-    _pendingInitialMessage = null;
 
     _showMessage('Discussion guardada correctamente.');
     Navigator.pop(context, true);
@@ -524,6 +451,7 @@ class _DiscussionEditorPageState extends State<DiscussionEditorPage> {
       id: _nullableText(_idController.text),
       type: _selectedType,
       title: title,
+      initialMessageContent: isEditing ? null : initialMessage,
       status: _status,
       applicationIds: _sortedIds(_selectedApplicationIds),
       indicatorIds: _sortedIds(_selectedIndicatorIds),
@@ -531,7 +459,6 @@ class _DiscussionEditorPageState extends State<DiscussionEditorPage> {
     );
 
     _submitInProgress = true;
-    _pendingInitialMessage = isEditing ? null : initialMessage;
     _submitFlowStage = isEditing
         ? _SubmitFlowStage.updatingDiscussion
         : _SubmitFlowStage.creatingDiscussion;
