@@ -9,7 +9,8 @@ class ApiEndpoints {
   static const String indicators = '$_developWorkflow/indicators';
   static const String tags = '$_developWorkflow/tags';
   static const String discussions = '$_developWorkflow/discussions';
-    static const String developers = '$_developWorkflow/developers';
+  static const String developers = '$_developWorkflow/developers';
+  static const String devices = '$_developWorkflow/devices';
 
   static String applicationById(String id) => '$applications/$id';
 
@@ -17,9 +18,10 @@ class ApiEndpoints {
 
   static String discussionById(String id) => '$discussions/$id';
 
-  static String discussionStatusById(String id) => '${discussionById(id)}/status';
+  static String discussionStatusById(String id) =>
+      '${discussionById(id)}/status';
 
-    static String discussionReadById(String id) => '${discussionById(id)}/read';
+  static String discussionReadById(String id) => '${discussionById(id)}/read';
 
   static String discussionAssignmentsById(String id) =>
       '${discussionById(id)}/assignments';
