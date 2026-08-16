@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
@@ -44,6 +45,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   final ScrollController _contentScrollController = ScrollController();
 
   bool _pendingComposerClear = false;
+  bool _pendingAttachmentUpload = false;
   String? _markAsReadRequestedForDiscussionId;
   bool _routeObserverSubscribed = false;
   int _lastKnownMessageCount = 0;
@@ -306,40 +308,89 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   }
 
   Future<void> _pickAndSendAttachment() async {
-    final selection = await FilePicker.platform.pickFiles(
-      allowMultiple: false,
-      withData: true,
+    debugPrint(
+      '[ATTACHMENT] button pressed '
+      'discussionId=${widget.discussionId} web=$kIsWeb',
     );
 
-    if (!mounted || selection == null || selection.files.isEmpty) {
-      return;
-    }
+    try {
+      if (kIsWeb) {
+        debugPrint('[ATTACHMENT] web picker opening');
+      }
 
-    final picked = selection.files.first;
-    final fileName = picked.name.trim();
-    final bytes = picked.bytes;
+      final selection = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+        withData: true,
+      );
 
-    if (fileName.isEmpty || bytes == null || bytes.isEmpty) {
-      _showMessage('No se pudo leer el archivo seleccionado.');
-      return;
-    }
+      if (!mounted || selection == null || selection.files.isEmpty) {
+        debugPrint('[ATTACHMENT] picker canceled or empty selection');
+        return;
+      }
 
-    final type = _inferAttachmentType(fileName);
-    final optionalContent = _messageController.text.trim();
+      final picked = selection.files.first;
+      final bytes = picked.bytes;
+      final rawName = picked.name.trim();
+      final fileName = rawName.isNotEmpty ? rawName : 'attachment';
+      final inferredMimeType = _inferMimeTypeFromFileName(fileName);
 
-    _pendingComposerClear = true;
-    context.read<DiscussionMessageBloc>().add(
-      CreateDiscussionAttachmentMessageEvent(
-        discussionId: widget.discussionId,
-        type: type,
+      if (bytes == null || bytes.isEmpty) {
+        _showMessage('No se pudo leer el archivo seleccionado.');
+        return;
+      }
+
+      final type = _inferAttachmentType(
         fileName: fileName,
-        fileBytes: bytes,
-        content: optionalContent.isEmpty ? null : optionalContent,
-      ),
-    );
+        mimeType: inferredMimeType,
+      );
+      final optionalContent = _messageController.text.trim();
+
+      debugPrint(
+        '[ATTACHMENT] file selected '
+        'name=$fileName mime=${inferredMimeType ?? '-'} size=${bytes.length}',
+      );
+      debugPrint('[ATTACHMENT] upload started');
+
+      _pendingComposerClear = true;
+      _pendingAttachmentUpload = true;
+      context.read<DiscussionMessageBloc>().add(
+        CreateDiscussionAttachmentMessageEvent(
+          discussionId: widget.discussionId,
+          type: type,
+          fileName: fileName,
+          fileBytes: bytes,
+          content: optionalContent.isEmpty ? null : optionalContent,
+        ),
+      );
+    } on PlatformException catch (error) {
+      debugPrint('[ATTACHMENT] picker error: $error');
+      if (mounted) {
+        _showMessage('No se pudo abrir el selector de archivos.');
+      }
+    } catch (error) {
+      debugPrint('[ATTACHMENT] unexpected picker error: $error');
+      if (mounted) {
+        _showMessage('Ocurrio un error al adjuntar el archivo.');
+      }
+    }
   }
 
-  DiscussionMessageType _inferAttachmentType(String fileName) {
+  DiscussionMessageType _inferAttachmentType({
+    required String fileName,
+    String? mimeType,
+  }) {
+    final normalizedMime = mimeType?.trim().toLowerCase() ?? '';
+    if (normalizedMime.startsWith('image/')) {
+      return DiscussionMessageType.image;
+    }
+    if (normalizedMime.startsWith('audio/')) {
+      return DiscussionMessageType.audio;
+    }
+    if (normalizedMime.startsWith('video/')) {
+      return DiscussionMessageType.video;
+    }
+
     final dotIndex = fileName.lastIndexOf('.');
     final extension = dotIndex < 0
         ? ''
@@ -391,6 +442,49 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     }
 
     return DiscussionMessageType.file;
+  }
+
+  String? _inferMimeTypeFromFileName(String fileName) {
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex < 0 || dotIndex == fileName.length - 1) {
+      return null;
+    }
+
+    final extension = fileName.substring(dotIndex + 1).trim().toLowerCase();
+    if (extension.isEmpty) {
+      return null;
+    }
+
+    const mimeByExtension = <String, String>{
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'bmp': 'image/bmp',
+      'heic': 'image/heic',
+      'heif': 'image/heif',
+      'svg': 'image/svg+xml',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'm4a': 'audio/mp4',
+      'aac': 'audio/aac',
+      'ogg': 'audio/ogg',
+      'opus': 'audio/opus',
+      'flac': 'audio/flac',
+      'amr': 'audio/amr',
+      'mp4': 'video/mp4',
+      'mov': 'video/quicktime',
+      'avi': 'video/x-msvideo',
+      'mkv': 'video/x-matroska',
+      'webm': 'video/webm',
+      'm4v': 'video/x-m4v',
+      '3gp': 'video/3gpp',
+      'pdf': 'application/pdf',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+
+    return mimeByExtension[extension] ?? 'application/octet-stream';
   }
 
   Future<void> _editMessage(DiscussionMessage message) async {
@@ -450,6 +544,10 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
 
     if (state.status == DiscussionMessageStatus.error &&
         state.errorMessage.isNotEmpty) {
+      if (_pendingAttachmentUpload) {
+        debugPrint('[ATTACHMENT] upload failed');
+      }
+      _pendingAttachmentUpload = false;
       _pendingComposerClear = false;
       _showMessage(state.errorMessage);
       return;
@@ -458,6 +556,10 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     if (_pendingComposerClear &&
         !state.isSending &&
         state.status == DiscussionMessageStatus.success) {
+      if (_pendingAttachmentUpload) {
+        debugPrint('[ATTACHMENT] upload completed');
+      }
+      _pendingAttachmentUpload = false;
       _pendingComposerClear = false;
       _messageController.clear();
       _scheduleScrollToBottom();
