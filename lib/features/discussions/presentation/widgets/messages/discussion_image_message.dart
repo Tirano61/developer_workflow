@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../../core/theme/app_colors.dart';
+import '../../../../../core/theme/app_radius.dart';
+
 class DiscussionImageMessage extends StatelessWidget {
   const DiscussionImageMessage({
     required this.fileUrl,
@@ -26,7 +29,7 @@ class DiscussionImageMessage extends StatelessWidget {
               return GestureDetector(
                 onTap: () => _openImageViewer(context, url),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppRadius.card),
                   child: SizedBox(
                     width: maxWidth,
                     height: 180,
@@ -50,15 +53,17 @@ class DiscussionImageMessage extends StatelessWidget {
                           bottom: 8,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(99),
+                              color: AppColors.backgroundSecondary.withValues(
+                                alpha: 0.9,
+                              ),
+                              borderRadius: BorderRadius.circular(AppRadius.pill),
                             ),
                             child: const Padding(
                               padding: EdgeInsets.all(6),
                               child: Icon(
                                 Icons.zoom_out_map,
                                 size: 16,
-                                color: Colors.white,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           ),
@@ -83,13 +88,13 @@ class DiscussionImageMessage extends StatelessWidget {
   void _openImageViewer(BuildContext context, String url) {
     showDialog<void>(
       context: context,
-      barrierColor: Colors.black87,
+      barrierColor: AppColors.background.withValues(alpha: 0.92),
       builder: (context) {
         final size = MediaQuery.sizeOf(context);
 
         return Dialog(
           insetPadding: const EdgeInsets.all(16),
-          backgroundColor: Colors.black,
+          backgroundColor: AppColors.backgroundSecondary,
           child: SizedBox(
             width: size.width * 0.9,
             height: size.height * 0.9,
@@ -104,11 +109,15 @@ class DiscussionImageMessage extends StatelessWidget {
                         url,
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) {
-                          return const Padding(
+                          return Padding(
                             padding: EdgeInsets.all(20),
                             child: Text(
                               'No se pudo cargar la imagen',
-                              style: TextStyle(color: Colors.white),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodyMedium?.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           );
                         },
@@ -122,7 +131,7 @@ class DiscussionImageMessage extends StatelessWidget {
                   child: IconButton(
                     tooltip: 'Cerrar',
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close, color: Colors.white),
+                    icon: const Icon(Icons.close, color: AppColors.textPrimary),
                   ),
                 ),
               ],

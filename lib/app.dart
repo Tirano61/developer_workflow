@@ -200,7 +200,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ],
         child: MaterialApp(
           title: AppConstants.appName,
-          theme: AppTheme.light,
+          theme: AppTheme.darkTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           navigatorKey: AppRouter.navigatorKey,
           scaffoldMessengerKey: AppRouter.scaffoldMessengerKey,
           navigatorObservers: [AppRouter.routeObserver],

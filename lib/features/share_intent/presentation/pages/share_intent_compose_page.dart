@@ -302,7 +302,8 @@ class _ShareIntentComposePageState extends State<ShareIntentComposePage> {
           height: 170,
           width: double.infinity,
           fit: BoxFit.cover,
-          errorBuilder: (_, error, stackTrace) => _fallbackIcon(content.type),
+            errorBuilder: (_, error, stackTrace) =>
+              _fallbackIcon(context, content.type),
         ),
       );
     }
@@ -317,16 +318,17 @@ class _ShareIntentComposePageState extends State<ShareIntentComposePage> {
             height: 170,
             width: double.infinity,
             fit: BoxFit.cover,
-            errorBuilder: (_, error, stackTrace) => _fallbackIcon(content.type),
+            errorBuilder: (_, error, stackTrace) =>
+              _fallbackIcon(context, content.type),
           ),
         );
       }
     }
 
-    return _fallbackIcon(content.type);
+    return _fallbackIcon(context, content.type);
   }
 
-  Widget _fallbackIcon(DiscussionMessageType type) {
+  Widget _fallbackIcon(BuildContext context, DiscussionMessageType type) {
     final icon = switch (type) {
       DiscussionMessageType.image => Icons.image_outlined,
       DiscussionMessageType.audio => Icons.audiotrack_outlined,
@@ -340,7 +342,7 @@ class _ShareIntentComposePageState extends State<ShareIntentComposePage> {
       height: 96,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade400),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(icon, size: 36),
