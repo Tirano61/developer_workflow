@@ -55,6 +55,8 @@ import '../../features/notifications/domain/repositories/notification_device_rep
 import '../../features/notifications/domain/usecases/register_device.dart';
 import '../../features/notifications/domain/usecases/unregister_device.dart';
 import '../../features/notifications/presentation/bloc/notification_bloc.dart';
+import '../../features/share_intent/data/datasources/share_intent_data_source.dart';
+import '../../features/share_intent/presentation/bloc/share_intent_bloc.dart';
 import '../../features/tags/data/datasources/tag_remote_data_source.dart';
 import '../../features/tags/data/repositories/tag_repository_impl.dart';
 import '../../features/tags/domain/repositories/tag_repository.dart';
@@ -308,6 +310,17 @@ Future<void> configureDependencies() async {
       uploadDiscussionMessageAttachment:
           sl<UploadDiscussionMessageAttachment>(),
       updateDiscussionMessage: sl<UpdateDiscussionMessage>(),
+    ),
+  );
+
+  sl.registerLazySingleton<ShareIntentDataSource>(
+    () => ShareIntentDataSourceImpl(),
+  );
+  sl.registerFactory<ShareIntentBloc>(
+    () => ShareIntentBloc(
+      shareIntentDataSource: sl<ShareIntentDataSource>(),
+      getDiscussions: sl<GetDiscussions>(),
+      uploadAttachment: sl<UploadDiscussionMessageAttachment>(),
     ),
   );
 }

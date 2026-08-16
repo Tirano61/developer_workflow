@@ -13,6 +13,8 @@ import '../../features/discussions/presentation/pages/discussions_page.dart';
 import '../../features/discussion_messages/presentation/bloc/discussion_message_bloc.dart';
 import '../../features/indicators/presentation/bloc/indicator_bloc.dart';
 import '../../features/indicators/presentation/pages/indicators_page.dart';
+import '../../features/share_intent/presentation/pages/share_intent_compose_page.dart';
+import '../../features/share_intent/presentation/pages/share_intent_route_args.dart';
 import '../../features/tags/presentation/bloc/tag_bloc.dart';
 import '../../features/tags/presentation/pages/tags_page.dart';
 import '../di/service_locator.dart';
@@ -31,6 +33,7 @@ class AppRoutes {
   static const String discussions = '/discussions';
   static const String discussionDetail = '/discussions/detail';
   static const String discussionCreate = '/discussions/create';
+  static const String shareIntentCompose = '/share-intent/compose';
 }
 
 class AppRouter {
@@ -136,6 +139,12 @@ class AppRouter {
             ),
           ),
         );
+      case AppRoutes.shareIntentCompose:
+        final args = _readShareIntentArgs(settings.arguments);
+        return _buildProtectedRoute(
+          settings: settings,
+          builder: (_) => ShareIntentComposePage(routeArgs: args),
+        );
       case AppRoutes.home:
         return _buildProtectedRoute(
           settings: settings,
@@ -214,5 +223,13 @@ class AppRouter {
     }
 
     return const DiscussionEditorRouteArgs();
+  }
+
+  static ShareIntentComposeRouteArgs _readShareIntentArgs(Object? args) {
+    if (args is ShareIntentComposeRouteArgs) {
+      return args;
+    }
+
+    return const ShareIntentComposeRouteArgs();
   }
 }
