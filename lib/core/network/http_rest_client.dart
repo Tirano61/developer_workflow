@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,6 +23,7 @@ class HttpRestClient implements RestClient {
   final NetworkConfig _config;
   final AuthTokenProvider _authTokenProvider;
   final Uri _baseUri;
+  static const Duration _requestTimeout = Duration(seconds: 15);
 
   @override
   Future<RestResponse<T>> get<T>(
@@ -145,7 +147,7 @@ class HttpRestClient implements RestClient {
     required bool requiresAuth,
   }) async {
     try {
-      final response = await request();
+      final response = await request().timeout(_requestTimeout);
       final decoded = _decodeBody(response.body);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -179,7 +181,15 @@ class HttpRestClient implements RestClient {
         'No se pudo conectar con el servidor: ${error.message}',
       );
     } on http.ClientException catch (error) {
-      throw NetworkException('Error de cliente HTTP: ${error.message}');
+      throw NetworkException(
+        'Error de cliente HTTP: ${error.message}. '
+        'Verifica que API_BASE_URL sea accesible por HTTPS y que CORS permita este origen.',
+      );
+    } on TimeoutException {
+      throw NetworkException(
+        'Timeout al conectar con ${_baseUri.toString()}. '
+        'Revisa disponibilidad del backend y CORS.',
+      );
     } on FormatException catch (error) {
       throw DataParsingException(
         'Respuesta con formato invalido: ${error.message}',
