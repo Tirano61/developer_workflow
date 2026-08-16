@@ -291,6 +291,47 @@ Autenticacion:
 }
 ```
 
+## Devices (FCM)
+
+### POST /develop-workflow/devices
+- Auth: Usuario autenticado
+- Descripcion: Registra o actualiza (idempotente) el dispositivo FCM del usuario autenticado.
+- Body:
+```json
+{
+  "token": "fcm_registration_token_android",
+  "platform": "ANDROID"
+}
+```
+
+### DELETE /develop-workflow/devices
+- Auth: Usuario autenticado
+- Descripcion: Desregistra un token FCM del usuario autenticado.
+- Body:
+```json
+{
+  "token": "fcm_registration_token_android"
+}
+```
+
+## Notifications
+
+### POST /develop-workflow/notifications/test
+- Auth: Usuario autenticado
+- Descripcion: Envia push de prueba al usuario autenticado (todos sus dispositivos registrados).
+- Payload enviado por backend:
+```json
+{
+  "notification": {
+    "title": "Develop Workflow",
+    "body": "Prueba desde NestJS"
+  },
+  "data": {
+    "type": "TEST"
+  }
+}
+```
+
 ## Tags
 
 ### GET /develop-workflow/tags
@@ -335,6 +376,7 @@ Autenticacion:
 - tagId: UUID valido de dw_tags
 - messageId: UUID valido de dw_discussion_messages
 - developerUserId: UUID valido de users con rol developer
+- deviceToken: FCM registration token valido de Android
 
 ## Read State / Unread
 

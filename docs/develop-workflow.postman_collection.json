@@ -45,6 +45,10 @@
 		{
 			"key": "developerUserId",
 			"value": ""
+		},
+		{
+			"key": "deviceToken",
+			"value": ""
 		}
 	],
 	"item": [
@@ -773,6 +777,66 @@
 							}
 						],
 						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/tags/{{tagId}}"
+					}
+				}
+			]
+		},
+		{
+			"name": "Devices & Notifications",
+			"item": [
+				{
+					"name": "Register device token (auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{deviceToken}}\",\n  \"platform\": \"ANDROID\"\n}"
+						},
+						"url": "{{DWbaseUrl}}/develop-workflow/devices"
+					}
+				},
+				{
+					"name": "Unregister device token (auth)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"token\": \"{{deviceToken}}\"\n}"
+						},
+						"url": "{{DWbaseUrl}}/develop-workflow/devices"
+					}
+				},
+				{
+					"name": "Send test push to current user (auth)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": "{{DWbaseUrl}}/develop-workflow/notifications/test"
 					}
 				}
 			]

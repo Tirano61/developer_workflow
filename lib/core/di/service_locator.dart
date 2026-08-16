@@ -48,6 +48,13 @@ import '../../features/indicators/domain/usecases/get_indicator.dart';
 import '../../features/indicators/domain/usecases/get_indicators.dart';
 import '../../features/indicators/domain/usecases/update_indicator.dart';
 import '../../features/indicators/presentation/bloc/indicator_bloc.dart';
+import '../../features/notifications/data/datasources/firebase_messaging_data_source.dart';
+import '../../features/notifications/data/datasources/notification_device_remote_data_source.dart';
+import '../../features/notifications/data/repositories/notification_device_repository_impl.dart';
+import '../../features/notifications/domain/repositories/notification_device_repository.dart';
+import '../../features/notifications/domain/usecases/register_device.dart';
+import '../../features/notifications/domain/usecases/unregister_device.dart';
+import '../../features/notifications/presentation/bloc/notification_bloc.dart';
 import '../../features/tags/data/datasources/tag_remote_data_source.dart';
 import '../../features/tags/data/repositories/tag_repository_impl.dart';
 import '../../features/tags/domain/repositories/tag_repository.dart';
@@ -123,6 +130,31 @@ Future<void> configureDependencies() async {
       restoreSessionUseCase: sl<RestoreSessionUseCase>(),
       logoutUseCase: sl<LogoutUseCase>(),
       authTokenProvider: sl<AuthTokenProvider>(),
+    ),
+  );
+
+  sl.registerLazySingleton<FirebaseMessagingDataSource>(
+    () => FirebaseMessagingDataSourceImpl(),
+  );
+  sl.registerLazySingleton<NotificationDeviceRemoteDataSource>(
+    () => NotificationDeviceRemoteDataSourceImpl(restClient: sl<RestClient>()),
+  );
+  sl.registerLazySingleton<NotificationDeviceRepository>(
+    () => NotificationDeviceRepositoryImpl(
+      remoteDataSource: sl<NotificationDeviceRemoteDataSource>(),
+    ),
+  );
+  sl.registerLazySingleton<RegisterDevice>(
+    () => RegisterDevice(sl<NotificationDeviceRepository>()),
+  );
+  sl.registerLazySingleton<UnregisterDevice>(
+    () => UnregisterDevice(sl<NotificationDeviceRepository>()),
+  );
+  sl.registerFactory<NotificationBloc>(
+    () => NotificationBloc(
+      messagingDataSource: sl<FirebaseMessagingDataSource>(),
+      registerDevice: sl<RegisterDevice>(),
+      unregisterDevice: sl<UnregisterDevice>(),
     ),
   );
 
@@ -273,7 +305,8 @@ Future<void> configureDependencies() async {
     () => DiscussionMessageBloc(
       getDiscussionMessages: sl<GetDiscussionMessages>(),
       createDiscussionMessage: sl<CreateDiscussionMessage>(),
-      uploadDiscussionMessageAttachment: sl<UploadDiscussionMessageAttachment>(),
+      uploadDiscussionMessageAttachment:
+          sl<UploadDiscussionMessageAttachment>(),
       updateDiscussionMessage: sl<UpdateDiscussionMessage>(),
     ),
   );
