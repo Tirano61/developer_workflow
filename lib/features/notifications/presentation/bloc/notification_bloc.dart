@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -38,8 +37,8 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
   final UnregisterDevice _unregisterDevice;
 
   StreamSubscription<String>? _tokenRefreshSubscription;
-  StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
-  StreamSubscription<RemoteMessage>? _messageOpenedSubscription;
+  StreamSubscription<Map<String, String>>? _foregroundMessageSubscription;
+  StreamSubscription<Map<String, String>>? _messageOpenedSubscription;
 
   Future<void> _onInitializeNotifications(
     InitializeNotificationsEvent event,
@@ -53,7 +52,7 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
       state.copyWith(status: NotificationStatus.initializing, errorMessage: ''),
     );
 
-    final pushSupported = _isAndroidPushSupported;
+    final pushSupported = _messagingDataSource.isSupported;
     if (!pushSupported) {
       emit(
         state.copyWith(
@@ -73,9 +72,8 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     });
 
     _foregroundMessageSubscription = _messagingDataSource.onMessage.listen((
-      message,
+      data,
     ) {
-      final data = _normalizeData(message.data);
       final type = data['type']?.trim() ?? '';
       final discussionId = _readDiscussionId(data) ?? '-';
 
@@ -86,42 +84,29 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
         );
       }
 
-      add(
-        NotificationForegroundMessageReceivedEvent(
-          data,
-        ),
-      );
+      add(NotificationForegroundMessageReceivedEvent(data));
     });
 
-    _messageOpenedSubscription = _messagingDataSource.onMessageOpenedApp.listen((
-      message,
-    ) {
-      if (kDebugMode) {
-        debugPrint(
-          'FCM onMessageOpenedApp received. data=${_normalizeData(message.data)}',
-        );
-      }
+    _messageOpenedSubscription = _messagingDataSource.onMessageOpenedApp.listen(
+      (data) {
+        if (kDebugMode) {
+          debugPrint('FCM onMessageOpenedApp received. data=$data');
+        }
 
-      add(
-        NotificationOpenedEvent(
-          data: _normalizeData(message.data),
-          source: 'onMessageOpenedApp',
-        ),
-      );
-    });
+        add(NotificationOpenedEvent(data: data, source: 'onMessageOpenedApp'));
+      },
+    );
 
     try {
       final initialMessage = await _messagingDataSource.getInitialMessage();
       if (initialMessage != null) {
         if (kDebugMode) {
-          debugPrint(
-            'FCM getInitialMessage received. data=${_normalizeData(initialMessage.data)}',
-          );
+          debugPrint('FCM getInitialMessage received. data=$initialMessage');
         }
 
         add(
           NotificationOpenedEvent(
-            data: _normalizeData(initialMessage.data),
+            data: initialMessage,
             source: 'getInitialMessage',
           ),
         );
@@ -258,7 +243,10 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     }
 
     emit(
-      state.copyWith(activeDiscussionId: normalizedDiscussionId, errorMessage: ''),
+      state.copyWith(
+        activeDiscussionId: normalizedDiscussionId,
+        errorMessage: '',
+      ),
     );
   }
 
@@ -333,11 +321,9 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
   ) async {
     if (!state.permissionRequested) {
       try {
-        final settings = await _messagingDataSource.requestPermission();
+        await _messagingDataSource.requestPermission();
         if (kDebugMode) {
-          debugPrint(
-            'FCM PERMISSION: ${settings.authorizationStatus}',
-          );
+          debugPrint('FCM PERMISSION requested on supported platform.');
         }
       } catch (error) {
         if (kDebugMode) {
@@ -424,14 +410,6 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     }
 
     return value;
-  }
-
-  Map<String, String> _normalizeData(Map<String, dynamic> data) {
-    return data.map((key, value) => MapEntry(key, value.toString()));
-  }
-
-  bool get _isAndroidPushSupported {
-    return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   }
 
   bool _shouldRefreshActiveDiscussion({

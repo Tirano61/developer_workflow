@@ -1,6 +1,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../features/applications/data/datasources/application_remote_data_source.dart';
 import '../../features/applications/data/repositories/application_repository_impl.dart';
@@ -135,9 +136,15 @@ Future<void> configureDependencies() async {
     ),
   );
 
-  sl.registerLazySingleton<FirebaseMessagingDataSource>(
-    () => FirebaseMessagingDataSourceImpl(),
-  );
+  sl.registerLazySingleton<FirebaseMessagingDataSource>(() {
+    final isAndroid =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (isAndroid) {
+      return FirebaseMessagingDataSourceImpl();
+    }
+
+    return const FirebaseMessagingNoOpDataSource();
+  });
   sl.registerLazySingleton<NotificationDeviceRemoteDataSource>(
     () => NotificationDeviceRemoteDataSourceImpl(restClient: sl<RestClient>()),
   );
