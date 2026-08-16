@@ -13,6 +13,11 @@ class NotificationState {
     this.openDiscussionId,
     this.navigationRequestVersion = 0,
     this.lastNotificationType = '',
+    this.activeDiscussionId,
+    this.notificationDiscussionId,
+    this.notificationEventVersion = 0,
+    this.refreshDiscussionId,
+    this.refreshRequestVersion = 0,
     this.errorMessage = '',
   });
 
@@ -27,6 +32,11 @@ class NotificationState {
   final String? openDiscussionId;
   final int navigationRequestVersion;
   final String lastNotificationType;
+  final String? activeDiscussionId;
+  final String? notificationDiscussionId;
+  final int notificationEventVersion;
+  final String? refreshDiscussionId;
+  final int refreshRequestVersion;
   final String errorMessage;
 
   NotificationState copyWith({
@@ -41,11 +51,19 @@ class NotificationState {
     String? openDiscussionId,
     int? navigationRequestVersion,
     String? lastNotificationType,
+    String? activeDiscussionId,
+    String? notificationDiscussionId,
+    int? notificationEventVersion,
+    String? refreshDiscussionId,
+    int? refreshRequestVersion,
     String? errorMessage,
     bool clearCurrentFcmToken = false,
     bool clearLastRegisteredToken = false,
     bool clearPendingDiscussionId = false,
     bool clearOpenDiscussionId = false,
+    bool clearActiveDiscussionId = false,
+    bool clearNotificationDiscussionId = false,
+    bool clearRefreshDiscussionId = false,
   }) {
     return NotificationState(
       status: status ?? this.status,
@@ -68,6 +86,18 @@ class NotificationState {
       navigationRequestVersion:
           navigationRequestVersion ?? this.navigationRequestVersion,
       lastNotificationType: lastNotificationType ?? this.lastNotificationType,
+        activeDiscussionId: clearActiveDiscussionId
+          ? null
+          : activeDiscussionId ?? this.activeDiscussionId,
+        notificationDiscussionId: clearNotificationDiscussionId
+          ? null
+          : notificationDiscussionId ?? this.notificationDiscussionId,
+        notificationEventVersion:
+          notificationEventVersion ?? this.notificationEventVersion,
+        refreshDiscussionId: clearRefreshDiscussionId
+          ? null
+          : refreshDiscussionId ?? this.refreshDiscussionId,
+        refreshRequestVersion: refreshRequestVersion ?? this.refreshRequestVersion,
       errorMessage: errorMessage ?? this.errorMessage,
     );
   }

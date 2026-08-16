@@ -29,6 +29,8 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     );
     on<NotificationOpenedEvent>(_onNotificationOpened);
     on<NotificationNavigationHandledEvent>(_onNavigationHandled);
+    on<NotificationActiveDiscussionChangedEvent>(_onActiveDiscussionChanged);
+    on<NotificationAppLifecycleResumedEvent>(_onAppLifecycleResumed);
   }
 
   final FirebaseMessagingDataSource _messagingDataSource;
@@ -73,15 +75,20 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     _foregroundMessageSubscription = _messagingDataSource.onMessage.listen((
       message,
     ) {
+      final data = _normalizeData(message.data);
+      final type = data['type']?.trim() ?? '';
+      final discussionId = _readDiscussionId(data) ?? '-';
+
       if (kDebugMode) {
         debugPrint(
-          'FCM onMessage received. data=${_normalizeData(message.data)}',
+          '[FCM] onMessage received - ${_timestampNow()} - '
+          'type=$type discussionId=$discussionId',
         );
       }
 
       add(
         NotificationForegroundMessageReceivedEvent(
-          _normalizeData(message.data),
+          data,
         ),
       );
     });
@@ -206,8 +213,70 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     }
 
     final notificationType = event.data['type']?.trim() ?? '';
+    final notificationDiscussionId = _readDiscussionId(event.data);
+
+    var nextState = state.copyWith(
+      lastNotificationType: notificationType,
+      notificationDiscussionId: notificationDiscussionId,
+      notificationEventVersion: state.notificationEventVersion + 1,
+      errorMessage: '',
+    );
+
+    if (_shouldRefreshActiveDiscussion(
+      notificationType: notificationType,
+      notificationDiscussionId: notificationDiscussionId,
+      activeDiscussionId: state.activeDiscussionId,
+    )) {
+      if (kDebugMode) {
+        debugPrint(
+          '[FCM] active discussion matched - ${_timestampNow()} - '
+          'discussionId=${notificationDiscussionId ?? '-'}',
+        );
+      }
+
+      nextState = nextState.copyWith(
+        refreshDiscussionId: notificationDiscussionId,
+        refreshRequestVersion: state.refreshRequestVersion + 1,
+      );
+    }
+
+    emit(nextState);
+  }
+
+  void _onActiveDiscussionChanged(
+    NotificationActiveDiscussionChangedEvent event,
+    Emitter<NotificationState> emit,
+  ) {
+    final normalizedDiscussionId = event.discussionId?.trim();
+    if (normalizedDiscussionId == null || normalizedDiscussionId.isEmpty) {
+      emit(state.copyWith(clearActiveDiscussionId: true));
+      return;
+    }
+
+    if (state.activeDiscussionId == normalizedDiscussionId) {
+      return;
+    }
+
     emit(
-      state.copyWith(lastNotificationType: notificationType, errorMessage: ''),
+      state.copyWith(activeDiscussionId: normalizedDiscussionId, errorMessage: ''),
+    );
+  }
+
+  void _onAppLifecycleResumed(
+    NotificationAppLifecycleResumedEvent event,
+    Emitter<NotificationState> emit,
+  ) {
+    final activeDiscussionId = state.activeDiscussionId?.trim();
+    if (activeDiscussionId == null || activeDiscussionId.isEmpty) {
+      return;
+    }
+
+    emit(
+      state.copyWith(
+        refreshDiscussionId: activeDiscussionId,
+        refreshRequestVersion: state.refreshRequestVersion + 1,
+        errorMessage: '',
+      ),
     );
   }
 
@@ -227,6 +296,18 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     }
 
     if (state.isAuthenticated) {
+      final activeDiscussionId = state.activeDiscussionId?.trim();
+      if (activeDiscussionId != null && activeDiscussionId == discussionId) {
+        emit(
+          state.copyWith(
+            refreshDiscussionId: discussionId,
+            refreshRequestVersion: state.refreshRequestVersion + 1,
+            errorMessage: '',
+          ),
+        );
+        return;
+      }
+
       emit(
         state.copyWith(
           openDiscussionId: discussionId,
@@ -351,6 +432,37 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
 
   bool get _isAndroidPushSupported {
     return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  }
+
+  bool _shouldRefreshActiveDiscussion({
+    required String notificationType,
+    required String? notificationDiscussionId,
+    required String? activeDiscussionId,
+  }) {
+    if (notificationType != 'DISCUSSION_MESSAGE') {
+      return false;
+    }
+
+    final incomingDiscussionId = notificationDiscussionId?.trim();
+    final currentActiveDiscussionId = activeDiscussionId?.trim();
+
+    if (incomingDiscussionId == null ||
+        incomingDiscussionId.isEmpty ||
+        currentActiveDiscussionId == null ||
+        currentActiveDiscussionId.isEmpty) {
+      return false;
+    }
+
+    return incomingDiscussionId == currentActiveDiscussionId;
+  }
+
+  String _timestampNow() {
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final ss = now.second.toString().padLeft(2, '0');
+    final ms = now.millisecond.toString().padLeft(3, '0');
+    return '$hh:$mm:$ss.$ms';
   }
 
   @override

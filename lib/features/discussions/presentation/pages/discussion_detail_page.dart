@@ -10,6 +10,9 @@ import '../../../discussion_messages/domain/entities/discussion_message.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_bloc.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_event.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_state.dart';
+import '../../../notifications/presentation/bloc/notification_bloc.dart';
+import '../../../notifications/presentation/bloc/notification_event.dart';
+import '../../../notifications/presentation/bloc/notification_state.dart';
 import '../../domain/entities/discussion.dart';
 import '../bloc/discussion_bloc.dart';
 import '../bloc/discussion_event.dart';
@@ -35,18 +38,40 @@ class DiscussionDetailPage extends StatefulWidget {
   State<DiscussionDetailPage> createState() => _DiscussionDetailPageState();
 }
 
-class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
+class _DiscussionDetailPageState extends State<DiscussionDetailPage>
+  with RouteAware {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _contentScrollController = ScrollController();
 
   bool _pendingComposerClear = false;
   String? _markAsReadRequestedForDiscussionId;
+  bool _routeObserverSubscribed = false;
+  int _lastKnownMessageCount = 0;
+  NotificationBloc? _notificationBloc;
 
   @override
   void initState() {
     super.initState();
+    _lastKnownMessageCount = 0;
+    _setActiveDiscussionId(widget.discussionId);
     _loadDiscussion();
     _loadMessages();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _notificationBloc ??= context.read<NotificationBloc>();
+
+    if (_routeObserverSubscribed) {
+      return;
+    }
+
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      AppRouter.routeObserver.subscribe(this, route);
+      _routeObserverSubscribed = true;
+    }
   }
 
   @override
@@ -56,16 +81,43 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
       return;
     }
 
+    _setActiveDiscussionId(widget.discussionId);
     _markAsReadRequestedForDiscussionId = null;
+    _lastKnownMessageCount = 0;
     _loadDiscussion();
     _loadMessages();
   }
 
   @override
   void dispose() {
+    if (_routeObserverSubscribed) {
+      AppRouter.routeObserver.unsubscribe(this);
+      _routeObserverSubscribed = false;
+    }
+    _clearActiveDiscussionId();
     _messageController.dispose();
     _contentScrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didPush() {
+    _setActiveDiscussionId(widget.discussionId);
+  }
+
+  @override
+  void didPopNext() {
+    _setActiveDiscussionId(widget.discussionId);
+  }
+
+  @override
+  void didPushNext() {
+    _clearActiveDiscussionId();
+  }
+
+  @override
+  void didPop() {
+    _clearActiveDiscussionId();
   }
 
   @override
@@ -77,6 +129,11 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
           ),
           BlocListener<DiscussionMessageBloc, DiscussionMessageState>(
             listener: _onDiscussionMessageStateChanged,
+          ),
+          BlocListener<NotificationBloc, NotificationState>(
+            listenWhen: (previous, current) =>
+                previous.refreshRequestVersion != current.refreshRequestVersion,
+            listener: _onNotificationRefreshRequested,
           ),
         ],
         child: Column(
@@ -150,6 +207,30 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
     );
   }
 
+  void _setActiveDiscussionId(String discussionId) {
+    _notificationBloc?.add(
+      NotificationActiveDiscussionChangedEvent(discussionId: discussionId),
+    );
+  }
+
+  void _clearActiveDiscussionId() {
+    _notificationBloc?.add(
+      const NotificationActiveDiscussionChangedEvent(discussionId: null),
+    );
+  }
+
+  void _onNotificationRefreshRequested(
+    BuildContext context,
+    NotificationState state,
+  ) {
+    final refreshDiscussionId = state.refreshDiscussionId?.trim();
+    if (refreshDiscussionId == null || refreshDiscussionId != widget.discussionId) {
+      return;
+    }
+
+    _refreshDiscussionAndMessages();
+  }
+
   void _onDiscussionStateChanged(BuildContext context, DiscussionState state) {
     if (state.status == DiscussionStatus.error && state.errorMessage.isNotEmpty) {
       _showMessage(state.errorMessage);
@@ -175,6 +256,20 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
       LoadDiscussionMessagesEvent(
         discussionId: widget.discussionId,
         page: page,
+        limit: 50,
+      ),
+    );
+  }
+
+  void _refreshDiscussionAndMessages() {
+    _loadDiscussion();
+    debugPrint(
+      '[DISCUSSION] refresh dispatched - ${_timestampNow()} - '
+      'discussionId=${widget.discussionId}',
+    );
+    context.read<DiscussionMessageBloc>().add(
+      RefreshDiscussionMessagesEvent(
+        discussionId: widget.discussionId,
         limit: 50,
       ),
     );
@@ -348,6 +443,11 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
     BuildContext context,
     DiscussionMessageState state,
   ) {
+    final hasNewMessages = state.messages.length > _lastKnownMessageCount;
+    final shouldAutoScrollForIncoming =
+        hasNewMessages && _isNearBottomBeforeUpdate();
+    _lastKnownMessageCount = state.messages.length;
+
     if (state.status == DiscussionMessageStatus.error &&
         state.errorMessage.isNotEmpty) {
       _pendingComposerClear = false;
@@ -364,9 +464,18 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
       return;
     }
 
-    if (state.messages.isNotEmpty && !state.isLoadingMore) {
+    if (shouldAutoScrollForIncoming && !state.isLoadingMore) {
       _scheduleScrollToBottom();
     }
+  }
+
+  bool _isNearBottomBeforeUpdate() {
+    if (!_contentScrollController.hasClients) {
+      return true;
+    }
+
+    final position = _contentScrollController.position;
+    return (position.maxScrollExtent - position.pixels) <= 120;
   }
 
   void _scheduleScrollToBottom() {
@@ -448,6 +557,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
               ),
             ),
             if (messageState.status == DiscussionMessageStatus.loading ||
+              messageState.isRefreshing ||
                 messageState.isSending ||
                 messageState.isUpdating)
               const SizedBox(
@@ -1093,5 +1203,14 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String _timestampNow() {
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final ss = now.second.toString().padLeft(2, '0');
+    final ms = now.millisecond.toString().padLeft(3, '0');
+    return '$hh:$mm:$ss.$ms';
   }
 }

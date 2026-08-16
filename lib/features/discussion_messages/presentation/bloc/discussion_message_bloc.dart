@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../core/error/result.dart';
 import '../../domain/entities/discussion_message.dart';
@@ -26,6 +27,7 @@ class DiscussionMessageBloc
        super(const DiscussionMessageState()) {
     on<LoadDiscussionMessagesEvent>(_onLoadDiscussionMessages);
     on<LoadMoreDiscussionMessagesEvent>(_onLoadMoreDiscussionMessages);
+     on<RefreshDiscussionMessagesEvent>(_onRefreshDiscussionMessages);
     on<CreateDiscussionMessageEvent>(_onCreateDiscussionMessage);
     on<CreateDiscussionAttachmentMessageEvent>(
       _onCreateDiscussionAttachmentMessage,
@@ -43,6 +45,12 @@ class DiscussionMessageBloc
     LoadDiscussionMessagesEvent event,
     Emitter<DiscussionMessageState> emit,
   ) async {
+    if (event.page == 1 &&
+        state.status == DiscussionMessageStatus.loading &&
+        state.activeDiscussionId == event.discussionId) {
+      return;
+    }
+
     final shouldReset =
         state.activeDiscussionId != event.discussionId || event.page == 1;
 
@@ -55,6 +63,7 @@ class DiscussionMessageBloc
             : state.page,
         errorMessage: '',
         isLoadingMore: false,
+        isRefreshing: false,
         isSending: false,
         isUpdating: false,
         clearUpdatingMessageId: true,
@@ -73,6 +82,13 @@ class DiscussionMessageBloc
     if (result is Success<DiscussionMessagePage>) {
       final sortedData = _sortByBackendChronology(result.data.data);
 
+      if (kDebugMode) {
+        debugPrint(
+          '[DISCUSSION] state updated - ${_timestampNow()} - '
+          'discussionId=${event.discussionId} messages=${sortedData.length}',
+        );
+      }
+
       emit(
         state.copyWith(
           status: DiscussionMessageStatus.success,
@@ -80,6 +96,7 @@ class DiscussionMessageBloc
           page: result.data.copyWith(data: sortedData),
           errorMessage: '',
           isLoadingMore: false,
+          isRefreshing: false,
           isSending: false,
           isUpdating: false,
           clearUpdatingMessageId: true,
@@ -94,9 +111,66 @@ class DiscussionMessageBloc
           status: DiscussionMessageStatus.error,
           errorMessage: result.failure.message,
           isLoadingMore: false,
+          isRefreshing: false,
           isSending: false,
           isUpdating: false,
           clearUpdatingMessageId: true,
+        ),
+      );
+    }
+  }
+
+  Future<void> _onRefreshDiscussionMessages(
+    RefreshDiscussionMessagesEvent event,
+    Emitter<DiscussionMessageState> emit,
+  ) async {
+    if (state.activeDiscussionId != event.discussionId) {
+      add(
+        LoadDiscussionMessagesEvent(
+          discussionId: event.discussionId,
+          page: 1,
+          limit: event.limit,
+          type: event.type,
+        ),
+      );
+      return;
+    }
+
+    if (state.isRefreshing || state.status == DiscussionMessageStatus.loading) {
+      return;
+    }
+
+    emit(state.copyWith(isRefreshing: true, errorMessage: ''));
+
+    final result = await _getDiscussionMessages(
+      get_uc.GetDiscussionMessagesParams(
+        discussionId: event.discussionId,
+        page: 1,
+        limit: event.limit,
+        type: event.type,
+      ),
+    );
+
+    if (result is Success<DiscussionMessagePage>) {
+      final sortedData = _sortByBackendChronology(result.data.data);
+
+      emit(
+        state.copyWith(
+          status: DiscussionMessageStatus.success,
+          activeDiscussionId: event.discussionId,
+          page: result.data.copyWith(data: sortedData),
+          errorMessage: '',
+          isRefreshing: false,
+        ),
+      );
+      return;
+    }
+
+    if (result is FailureResult<DiscussionMessagePage>) {
+      emit(
+        state.copyWith(
+          isRefreshing: false,
+          errorMessage: result.failure.message,
         ),
       );
     }
@@ -135,6 +209,7 @@ class DiscussionMessageBloc
           page: result.data.copyWith(data: merged),
           errorMessage: '',
           isLoadingMore: false,
+          isRefreshing: false,
         ),
       );
       return;
@@ -146,6 +221,7 @@ class DiscussionMessageBloc
           status: DiscussionMessageStatus.error,
           errorMessage: result.failure.message,
           isLoadingMore: false,
+          isRefreshing: false,
         ),
       );
     }
@@ -167,7 +243,7 @@ class DiscussionMessageBloc
       return;
     }
 
-    emit(state.copyWith(isSending: true, errorMessage: ''));
+    emit(state.copyWith(isSending: true, isRefreshing: false, errorMessage: ''));
 
     final result = await _createDiscussionMessage(
       create_uc.CreateDiscussionMessageParams(
@@ -213,6 +289,7 @@ class DiscussionMessageBloc
             totalPages: totalPages,
           ),
           errorMessage: '',
+          isRefreshing: false,
           isSending: false,
         ),
       );
@@ -224,6 +301,7 @@ class DiscussionMessageBloc
         state.copyWith(
           status: DiscussionMessageStatus.error,
           errorMessage: result.failure.message,
+          isRefreshing: false,
           isSending: false,
         ),
       );
@@ -251,6 +329,7 @@ class DiscussionMessageBloc
       state.copyWith(
         isUpdating: true,
         updatingMessageId: event.messageId,
+        isRefreshing: false,
         errorMessage: '',
       ),
     );
@@ -274,6 +353,7 @@ class DiscussionMessageBloc
           status: DiscussionMessageStatus.success,
           page: state.page.copyWith(data: data),
           errorMessage: '',
+          isRefreshing: false,
           isUpdating: false,
           clearUpdatingMessageId: true,
         ),
@@ -286,6 +366,7 @@ class DiscussionMessageBloc
         state.copyWith(
           status: DiscussionMessageStatus.error,
           errorMessage: result.failure.message,
+          isRefreshing: false,
           isUpdating: false,
           clearUpdatingMessageId: true,
         ),
@@ -321,7 +402,7 @@ class DiscussionMessageBloc
       return;
     }
 
-    emit(state.copyWith(isSending: true, errorMessage: ''));
+    emit(state.copyWith(isSending: true, isRefreshing: false, errorMessage: ''));
 
     final result = await _uploadDiscussionMessageAttachment(
       upload_attachment_uc.UploadDiscussionMessageAttachmentParams(
@@ -369,6 +450,7 @@ class DiscussionMessageBloc
             totalPages: totalPages,
           ),
           errorMessage: '',
+          isRefreshing: false,
           isSending: false,
         ),
       );
@@ -380,6 +462,7 @@ class DiscussionMessageBloc
         state.copyWith(
           status: DiscussionMessageStatus.error,
           errorMessage: result.failure.message,
+          isRefreshing: false,
           isSending: false,
         ),
       );
@@ -437,5 +520,14 @@ class DiscussionMessageBloc
     });
 
     return List<DiscussionMessage>.unmodifiable(list);
+  }
+
+  String _timestampNow() {
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final ss = now.second.toString().padLeft(2, '0');
+    final ms = now.millisecond.toString().padLeft(3, '0');
+    return '$hh:$mm:$ss.$ms';
   }
 }

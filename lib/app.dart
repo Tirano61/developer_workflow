@@ -12,21 +12,60 @@ import 'features/notifications/presentation/bloc/notification_bloc.dart';
 import 'features/notifications/presentation/bloc/notification_event.dart';
 import 'features/notifications/presentation/bloc/notification_state.dart';
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  late final AuthBloc _authBloc;
+  late final NotificationBloc _notificationBloc;
+  bool _appWasInBackground = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    _authBloc = sl<AuthBloc>();
+    _notificationBloc = sl<NotificationBloc>();
+    _notificationBloc.add(const InitializeNotificationsEvent());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _notificationBloc.close();
+    _authBloc.close();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _appWasInBackground = true;
+        break;
+      case AppLifecycleState.resumed:
+        if (_appWasInBackground) {
+          _appWasInBackground = false;
+          _notificationBloc.add(const NotificationAppLifecycleResumedEvent());
+        }
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<AuthBloc>(create: (_) => sl<AuthBloc>()),
-        BlocProvider<NotificationBloc>(
-          create: (_) {
-            final bloc = sl<NotificationBloc>();
-            bloc.add(const InitializeNotificationsEvent());
-            return bloc;
-          },
-        ),
+        BlocProvider<AuthBloc>.value(value: _authBloc),
+        BlocProvider<NotificationBloc>.value(value: _notificationBloc),
       ],
       child: MultiBlocListener(
         listeners: [
@@ -95,6 +134,7 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.light,
           navigatorKey: AppRouter.navigatorKey,
           scaffoldMessengerKey: AppRouter.scaffoldMessengerKey,
+          navigatorObservers: [AppRouter.routeObserver],
           initialRoute: AppRoutes.login,
           onGenerateRoute: AppRouter.onGenerateRoute,
         ),

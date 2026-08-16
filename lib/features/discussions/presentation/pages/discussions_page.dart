@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/router/app_router.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../notifications/presentation/bloc/notification_state.dart';
+import '../../../notifications/presentation/bloc/notification_bloc.dart';
 import '../../domain/entities/discussion.dart';
 import '../../domain/entities/discussion_filters.dart';
 import '../bloc/discussion_bloc.dart';
@@ -68,47 +70,66 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
           ),
         ],
       ),
-      body: BlocConsumer<DiscussionBloc, DiscussionState>(
-        listener: (context, state) {
-          if (state.errorMessage.isNotEmpty) {
-            _showMessage(state.errorMessage);
-            context.read<DiscussionBloc>().add(
-              const ClearDiscussionOperationMessageEvent(),
-            );
-          }
-
-          if (state.operationMessage.isNotEmpty) {
-            _showMessage(state.operationMessage);
-            context.read<DiscussionBloc>().add(
-              const ClearDiscussionOperationMessageEvent(),
-            );
-          }
-
-          final selected = state.selectedDiscussion;
-          if (selected?.id != null && selected!.id!.isNotEmpty) {
-            setState(() {
-              _selectedDiscussionId = selected.id;
-            });
-          }
-        },
-        builder: (context, state) {
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
-
-              if (state.status == DiscussionStatus.loading &&
-                  state.discussions.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
+      body: MultiBlocListener(
+        listeners: [
+          BlocListener<NotificationBloc, NotificationState>(
+            listenWhen: (previous, current) =>
+                previous.notificationEventVersion !=
+                current.notificationEventVersion,
+            listener: (context, notificationState) {
+              if (!_shouldRefreshKanbanForNotification(notificationState)) {
+                return;
               }
 
-              if (isDesktop) {
-                return _buildDesktopBoard(context, state, isDeveloper);
-              }
-
-              return _buildMobileBoard(context, state, isDeveloper);
+              _requestDiscussions(
+                forDesktop: _isDesktop(context),
+                silent: true,
+              );
             },
-          );
-        },
+          ),
+        ],
+        child: BlocConsumer<DiscussionBloc, DiscussionState>(
+          listener: (context, state) {
+            if (state.errorMessage.isNotEmpty) {
+              _showMessage(state.errorMessage);
+              context.read<DiscussionBloc>().add(
+                const ClearDiscussionOperationMessageEvent(),
+              );
+            }
+
+            if (state.operationMessage.isNotEmpty) {
+              _showMessage(state.operationMessage);
+              context.read<DiscussionBloc>().add(
+                const ClearDiscussionOperationMessageEvent(),
+              );
+            }
+
+            final selected = state.selectedDiscussion;
+            if (selected?.id != null && selected!.id!.isNotEmpty) {
+              setState(() {
+                _selectedDiscussionId = selected.id;
+              });
+            }
+          },
+          builder: (context, state) {
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
+
+                if (state.status == DiscussionStatus.loading &&
+                    state.discussions.isEmpty) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (isDesktop) {
+                  return _buildDesktopBoard(context, state, isDeveloper);
+                }
+
+                return _buildMobileBoard(context, state, isDeveloper);
+              },
+            );
+          },
+        ),
       ),
     );
   }
@@ -387,9 +408,27 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     _requestDiscussions(forDesktop: _isDesktop(context));
   }
 
-  void _requestDiscussions({required bool forDesktop}) {
+  void _requestDiscussions({required bool forDesktop, bool silent = false}) {
     final filters = _buildFilters(forDesktop: forDesktop);
-    context.read<DiscussionBloc>().add(LoadDiscussionsEvent(filters: filters));
+    context.read<DiscussionBloc>().add(
+      LoadDiscussionsEvent(filters: filters, silent: silent),
+    );
+  }
+
+  bool _shouldRefreshKanbanForNotification(NotificationState state) {
+    const supportedTypes = <String>{
+      'DISCUSSION_CREATED',
+      'DISCUSSION_MESSAGE',
+      'DISCUSSION_STATUS_CHANGED',
+      'DISCUSSION_ASSIGNMENT_CHANGED',
+    };
+
+    final type = state.lastNotificationType.trim();
+    if (type.isEmpty || !supportedTypes.contains(type)) {
+      return false;
+    }
+
+    return true;
   }
 
   DiscussionFilters _buildFilters({required bool forDesktop}) {

@@ -30,6 +30,18 @@ class LoadMoreDiscussionMessagesEvent extends DiscussionMessageEvent {
   final DiscussionMessageType? type;
 }
 
+class RefreshDiscussionMessagesEvent extends DiscussionMessageEvent {
+  const RefreshDiscussionMessagesEvent({
+    required this.discussionId,
+    this.limit = 50,
+    this.type,
+  });
+
+  final String discussionId;
+  final int limit;
+  final DiscussionMessageType? type;
+}
+
 class CreateDiscussionMessageEvent extends DiscussionMessageEvent {
   const CreateDiscussionMessageEvent({
     required this.discussionId,
