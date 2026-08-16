@@ -11,6 +11,10 @@ import 'features/discussions/presentation/pages/discussion_route_args.dart';
 import 'features/notifications/presentation/bloc/notification_bloc.dart';
 import 'features/notifications/presentation/bloc/notification_event.dart';
 import 'features/notifications/presentation/bloc/notification_state.dart';
+import 'features/share_intent/presentation/bloc/share_intent_bloc.dart';
+import 'features/share_intent/presentation/bloc/share_intent_event.dart';
+import 'features/share_intent/presentation/bloc/share_intent_state.dart';
+import 'features/share_intent/presentation/pages/share_intent_route_args.dart';
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -22,7 +26,9 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final AuthBloc _authBloc;
   late final NotificationBloc _notificationBloc;
+  late final ShareIntentBloc _shareIntentBloc;
   bool _appWasInBackground = false;
+  bool _shareComposerOpen = false;
 
   @override
   void initState() {
@@ -31,12 +37,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     _authBloc = sl<AuthBloc>();
     _notificationBloc = sl<NotificationBloc>();
+    _shareIntentBloc = sl<ShareIntentBloc>();
     _notificationBloc.add(const InitializeNotificationsEvent());
+    _shareIntentBloc.add(const InitializeShareIntentEvent());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _shareIntentBloc.close();
     _notificationBloc.close();
     _authBloc.close();
     super.dispose();
@@ -66,6 +75,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       providers: [
         BlocProvider<AuthBloc>.value(value: _authBloc),
         BlocProvider<NotificationBloc>.value(value: _notificationBloc),
+        BlocProvider<ShareIntentBloc>.value(value: _shareIntentBloc),
       ],
       child: MultiBlocListener(
         listeners: [
@@ -76,6 +86,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             listener: (context, state) {
               context.read<NotificationBloc>().add(
                 NotificationAuthStateChangedEvent(
+                  isAuthenticated: state.isAuthenticated,
+                ),
+              );
+              context.read<ShareIntentBloc>().add(
+                ShareIntentAuthStatusChangedEvent(
                   isAuthenticated: state.isAuthenticated,
                 ),
               );
@@ -125,6 +140,60 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
               context.read<NotificationBloc>().add(
                 const NotificationNavigationHandledEvent(),
+              );
+            },
+          ),
+          BlocListener<ShareIntentBloc, ShareIntentState>(
+            listenWhen: (previous, current) =>
+                previous.composerRequestVersion !=
+                    current.composerRequestVersion ||
+                previous.infoMessageVersion != current.infoMessageVersion,
+            listener: (context, state) async {
+              final messenger = AppRouter.scaffoldMessengerKey.currentState;
+
+              if (state.infoMessage.trim().isNotEmpty) {
+                messenger
+                  ?..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(content: Text(state.infoMessage)));
+                context.read<ShareIntentBloc>().add(
+                  const ShareIntentMessageConsumedEvent(),
+                );
+              }
+
+              if (!state.isAuthenticated ||
+                  state.pendingContent == null ||
+                  _shareComposerOpen) {
+                return;
+              }
+
+              _shareComposerOpen = true;
+              final navigator = AppRouter.navigatorKey.currentState;
+              final preferredDiscussionId = context
+                  .read<NotificationBloc>()
+                  .state
+                  .activeDiscussionId;
+
+              final result = await navigator?.pushNamed(
+                AppRoutes.shareIntentCompose,
+                arguments: ShareIntentComposeRouteArgs(
+                  preferredDiscussionId: preferredDiscussionId,
+                ),
+              );
+
+              _shareComposerOpen = false;
+
+              final selectedDiscussionId = result is String
+                  ? result.trim()
+                  : '';
+              if (selectedDiscussionId.isEmpty) {
+                return;
+              }
+
+              navigator?.pushNamed(
+                AppRoutes.discussionDetail,
+                arguments: DiscussionDetailRouteArgs(
+                  discussionId: selectedDiscussionId,
+                ),
               );
             },
           ),

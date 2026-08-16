@@ -19,6 +19,19 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects {
+    if (name == "receive_sharing_intent") {
+        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class.java)
+            .configureEach {
+                compilerOptions {
+                    jvmTarget.set(
+                        org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8,
+                    )
+                }
+            }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
