@@ -1,6 +1,7 @@
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/network/rest_client.dart';
+import 'package:flutter/foundation.dart';
 import '../../domain/entities/discussion_message.dart';
 import '../models/discussion_message_model.dart';
 
@@ -47,6 +48,11 @@ class DiscussionMessageRemoteDataSourceImpl
     int limit = 50,
     DiscussionMessageType? type,
   }) async {
+    debugPrint(
+      '[DISCUSSION] HTTP refresh started - ${_timestampNow()} - '
+      'discussionId=$discussionId',
+    );
+
     final response = await _restClient.get<Object?>(
       ApiEndpoints.discussionMessagesByDiscussionId(
         Uri.encodeComponent(discussionId),
@@ -58,10 +64,17 @@ class DiscussionMessageRemoteDataSourceImpl
       ),
     );
 
-    return DiscussionMessagePageModel.fromPayload(
+    final model = DiscussionMessagePageModel.fromPayload(
       response.data,
       discussionIdFallback: discussionId,
     );
+
+    debugPrint(
+      '[DISCUSSION] HTTP refresh completed - ${_timestampNow()} - '
+      'discussionId=$discussionId messages=${model.data.length}',
+    );
+
+    return model;
   }
 
   @override
@@ -168,5 +181,14 @@ class DiscussionMessageRemoteDataSourceImpl
     }
 
     return params;
+  }
+
+  String _timestampNow() {
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final ss = now.second.toString().padLeft(2, '0');
+    final ms = now.millisecond.toString().padLeft(3, '0');
+    return '$hh:$mm:$ss.$ms';
   }
 }

@@ -34,3 +34,13 @@ class NotificationOpenedEvent extends NotificationEvent {
 class NotificationNavigationHandledEvent extends NotificationEvent {
   const NotificationNavigationHandledEvent();
 }
+
+class NotificationActiveDiscussionChangedEvent extends NotificationEvent {
+  const NotificationActiveDiscussionChangedEvent({required this.discussionId});
+
+  final String? discussionId;
+}
+
+class NotificationAppLifecycleResumedEvent extends NotificationEvent {
+  const NotificationAppLifecycleResumedEvent();
+}

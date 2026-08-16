@@ -40,6 +40,8 @@ class AppRouter {
       GlobalKey<NavigatorState>();
   static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
+  static final RouteObserver<ModalRoute<dynamic>> routeObserver =
+      RouteObserver<ModalRoute<dynamic>>();
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {

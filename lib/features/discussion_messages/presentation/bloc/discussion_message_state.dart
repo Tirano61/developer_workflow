@@ -10,6 +10,7 @@ class DiscussionMessageState {
     this.activeDiscussionId = '',
     this.errorMessage = '',
     this.isLoadingMore = false,
+    this.isRefreshing = false,
     this.isSending = false,
     this.isUpdating = false,
     this.updatingMessageId,
@@ -20,6 +21,7 @@ class DiscussionMessageState {
   final String activeDiscussionId;
   final String errorMessage;
   final bool isLoadingMore;
+  final bool isRefreshing;
   final bool isSending;
   final bool isUpdating;
   final String? updatingMessageId;
@@ -32,6 +34,7 @@ class DiscussionMessageState {
     String? activeDiscussionId,
     String? errorMessage,
     bool? isLoadingMore,
+    bool? isRefreshing,
     bool? isSending,
     bool? isUpdating,
     String? updatingMessageId,
@@ -43,6 +46,7 @@ class DiscussionMessageState {
       activeDiscussionId: activeDiscussionId ?? this.activeDiscussionId,
       errorMessage: errorMessage ?? this.errorMessage,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+      isRefreshing: isRefreshing ?? this.isRefreshing,
       isSending: isSending ?? this.isSending,
       isUpdating: isUpdating ?? this.isUpdating,
       updatingMessageId: clearUpdatingMessageId
