@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../../../core/theme/app_colors.dart';
+
 class DiscussionVideoMessage extends StatefulWidget {
   const DiscussionVideoMessage({
     required this.fileUrl,
@@ -166,7 +168,7 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
                           child: Icon(
                             Icons.play_circle_fill,
                             size: 56,
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                     ],
