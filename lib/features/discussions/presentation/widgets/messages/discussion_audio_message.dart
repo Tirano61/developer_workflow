@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../../../../core/theme/app_radius.dart';
+import '../../../../../core/theme/app_spacing.dart';
 
 class DiscussionAudioMessage extends StatefulWidget {
   const DiscussionAudioMessage({
@@ -107,7 +108,7 @@ class _DiscussionAudioMessageState extends State<DiscussionAudioMessage> {
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
@@ -116,7 +117,10 @@ class _DiscussionAudioMessageState extends State<DiscussionAudioMessage> {
           ),
           child: _buildPlayerContent(context),
         ),
-        if (caption.isNotEmpty) ...[const SizedBox(height: 8), Text(caption)],
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(caption),
+        ],
       ],
     );
   }

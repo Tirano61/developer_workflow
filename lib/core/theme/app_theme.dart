@@ -119,6 +119,13 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
+      tabBarTheme: const TabBarThemeData(
+        labelColor: AppColors.textPrimary,
+        unselectedLabelColor: AppColors.textSecondary,
+        indicatorColor: AppColors.primary,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: AppColors.divider,
+      ),
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surfaceElevated,
         shape: RoundedRectangleBorder(

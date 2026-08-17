@@ -105,12 +105,12 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Administracion de catalogos'),
+        title: const Text('Administración de catálogos'),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Applications'),
-            Tab(text: 'Indicators'),
+            Tab(text: 'Aplicaciones'),
+            Tab(text: 'Indicadores'),
             Tab(text: 'Tags'),
           ],
         ),
@@ -195,7 +195,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
 
     return Row(
       children: [
-        Text('Catalogo', style: Theme.of(context).textTheme.titleSmall),
+        Text('Catálogo', style: Theme.of(context).textTheme.titleSmall),
         const Spacer(),
         if (_isDeveloper)
           ElevatedButton.icon(
@@ -215,7 +215,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
             icon: const Icon(Icons.add_rounded),
             label: Text(
               switch (tab) {
-                CatalogAdminTab.applications => 'Nueva application',
+                CatalogAdminTab.applications => 'Nueva aplicación',
                 CatalogAdminTab.indicators => 'Nuevo indicador',
                 CatalogAdminTab.tags => 'Nuevo tag',
               },
@@ -250,7 +250,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
 
         if (items.isEmpty) {
           return _EmptyState(
-            message: 'Todavia no hay applications.',
+            message: 'Todavia no hay aplicaciones.',
             showCreate: _isDeveloper,
             onCreate: _openApplicationDialog,
           );
@@ -482,7 +482,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
     final relatedApps = indicatorState.selectedIndicatorApplications;
 
     return _DetailCard(
-      title: 'Applications asociadas',
+      title: 'Aplicaciones asociadas',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -493,7 +493,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
             ),
           if (relatedApps.isEmpty)
             Text(
-              'Sin applications asociadas.',
+              'Sin aplicaciones asociadas.',
               style: Theme.of(context).textTheme.bodySmall,
             )
           else
@@ -503,7 +503,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
               children: relatedApps.map((item) {
                 final name = item.name.trim();
                 return Chip(
-                  label: Text(name.isEmpty ? 'Application sin nombre' : name),
+                  label: Text(name.isEmpty ? 'Aplicación sin nombre' : name),
                 );
               }).toList(growable: false),
             ),
@@ -637,7 +637,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: Text(initial == null ? 'Nueva application' : 'Editar application'),
+              title: Text(initial == null ? 'Nueva aplicación' : 'Editar aplicación'),
               content: SizedBox(
                 width: 460,
                 child: Column(
@@ -652,7 +652,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
                       controller: descriptionController,
                       minLines: 2,
                       maxLines: 4,
-                      decoration: const InputDecoration(labelText: 'Descripcion'),
+                      decoration: const InputDecoration(labelText: 'Descripción'),
                     ),
                     if (error != null) ...[
                       const SizedBox(height: AppSpacing.sm),
@@ -751,7 +751,7 @@ class _CatalogAdminPageState extends State<CatalogAdminPage>
                       controller: descriptionController,
                       minLines: 2,
                       maxLines: 4,
-                      decoration: const InputDecoration(labelText: 'Descripcion'),
+                      decoration: const InputDecoration(labelText: 'Descripción'),
                     ),
                     if (error != null) ...[
                       const SizedBox(height: AppSpacing.sm),

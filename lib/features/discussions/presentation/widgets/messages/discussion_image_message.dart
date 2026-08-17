@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/theme/app_radius.dart';
+import '../../../../../core/theme/app_spacing.dart';
 
 class DiscussionImageMessage extends StatelessWidget {
   const DiscussionImageMessage({
@@ -25,14 +26,14 @@ class DiscussionImageMessage extends StatelessWidget {
         if (hasUrl)
           LayoutBuilder(
             builder: (context, constraints) {
-              final maxWidth = constraints.maxWidth.clamp(140.0, 280.0);
+              final maxWidth = constraints.maxWidth.clamp(180.0, 360.0);
               return GestureDetector(
                 onTap: () => _openImageViewer(context, url),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(AppRadius.card),
                   child: SizedBox(
                     width: maxWidth,
-                    height: 180,
+                    height: 210,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
@@ -78,7 +79,7 @@ class DiscussionImageMessage extends StatelessWidget {
         else
           const Text('Imagen adjunta sin URL disponible.'),
         if (trimmedCaption.isNotEmpty) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.xs),
           Text(trimmedCaption),
         ],
       ],
