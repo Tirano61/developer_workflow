@@ -14,6 +14,7 @@ class DiscussionMessageState {
     this.isSending = false,
     this.isUpdating = false,
     this.updatingMessageId,
+    this.deletingMessageId,
   });
 
   final DiscussionMessageStatus status;
@@ -25,6 +26,9 @@ class DiscussionMessageState {
   final bool isSending;
   final bool isUpdating;
   final String? updatingMessageId;
+  final String? deletingMessageId;
+
+  bool get isDeleting => deletingMessageId != null;
 
   List<DiscussionMessage> get messages => page.data;
 
@@ -39,6 +43,8 @@ class DiscussionMessageState {
     bool? isUpdating,
     String? updatingMessageId,
     bool clearUpdatingMessageId = false,
+    String? deletingMessageId,
+    bool clearDeletingMessageId = false,
   }) {
     return DiscussionMessageState(
       status: status ?? this.status,
@@ -52,6 +58,9 @@ class DiscussionMessageState {
       updatingMessageId: clearUpdatingMessageId
           ? null
           : updatingMessageId ?? this.updatingMessageId,
+      deletingMessageId: clearDeletingMessageId
+          ? null
+          : deletingMessageId ?? this.deletingMessageId,
     );
   }
 }

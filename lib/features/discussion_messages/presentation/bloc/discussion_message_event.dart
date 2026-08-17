@@ -81,3 +81,13 @@ class UpdateDiscussionMessageEvent extends DiscussionMessageEvent {
   final String messageId;
   final String content;
 }
+
+class DeleteDiscussionMessageEvent extends DiscussionMessageEvent {
+  const DeleteDiscussionMessageEvent({
+    required this.discussionId,
+    required this.messageId,
+  });
+
+  final String discussionId;
+  final String messageId;
+}

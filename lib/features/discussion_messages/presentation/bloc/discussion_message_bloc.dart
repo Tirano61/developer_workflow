@@ -5,6 +5,7 @@ import '../../../../core/error/result.dart';
 import '../../domain/entities/discussion_message.dart';
 import '../../domain/entities/discussion_message_page.dart';
 import '../../domain/usecases/create_discussion_message.dart' as create_uc;
+import '../../domain/usecases/delete_discussion_message.dart' as delete_uc;
 import '../../domain/usecases/get_discussion_messages.dart' as get_uc;
 import '../../domain/usecases/upload_discussion_message_attachment.dart'
   as upload_attachment_uc;
@@ -20,10 +21,12 @@ class DiscussionMessageBloc
     required upload_attachment_uc.UploadDiscussionMessageAttachment
     uploadDiscussionMessageAttachment,
     required update_uc.UpdateDiscussionMessage updateDiscussionMessage,
+    required delete_uc.DeleteDiscussionMessage deleteDiscussionMessage,
   }) : _getDiscussionMessages = getDiscussionMessages,
        _createDiscussionMessage = createDiscussionMessage,
        _uploadDiscussionMessageAttachment = uploadDiscussionMessageAttachment,
        _updateDiscussionMessage = updateDiscussionMessage,
+       _deleteDiscussionMessage = deleteDiscussionMessage,
        super(const DiscussionMessageState()) {
     on<LoadDiscussionMessagesEvent>(_onLoadDiscussionMessages);
     on<LoadMoreDiscussionMessagesEvent>(_onLoadMoreDiscussionMessages);
@@ -33,6 +36,7 @@ class DiscussionMessageBloc
       _onCreateDiscussionAttachmentMessage,
     );
     on<UpdateDiscussionMessageEvent>(_onUpdateDiscussionMessage);
+    on<DeleteDiscussionMessageEvent>(_onDeleteDiscussionMessage);
   }
 
   final get_uc.GetDiscussionMessages _getDiscussionMessages;
@@ -40,6 +44,7 @@ class DiscussionMessageBloc
   final upload_attachment_uc.UploadDiscussionMessageAttachment
   _uploadDiscussionMessageAttachment;
   final update_uc.UpdateDiscussionMessage _updateDiscussionMessage;
+  final delete_uc.DeleteDiscussionMessage _deleteDiscussionMessage;
 
   Future<void> _onLoadDiscussionMessages(
     LoadDiscussionMessagesEvent event,
@@ -464,6 +469,53 @@ class DiscussionMessageBloc
           errorMessage: result.failure.message,
           isRefreshing: false,
           isSending: false,
+        ),
+      );
+    }
+  }
+
+  Future<void> _onDeleteDiscussionMessage(
+    DeleteDiscussionMessageEvent event,
+    Emitter<DiscussionMessageState> emit,
+  ) async {
+    if (state.deletingMessageId != null) {
+      return;
+    }
+
+    emit(state.copyWith(deletingMessageId: event.messageId, errorMessage: ''));
+
+    final result = await _deleteDiscussionMessage(
+      delete_uc.DeleteDiscussionMessageParams(
+        discussionId: event.discussionId,
+        messageId: event.messageId,
+      ),
+    );
+
+    if (result is Success<void>) {
+      final updatedData = state.activeDiscussionId == event.discussionId
+          ? state.page.data
+              .where((m) => m.id != event.messageId)
+              .toList(growable: false)
+          : state.page.data;
+      final newTotal =
+          state.page.total > 0 ? state.page.total - 1 : 0;
+      emit(
+        state.copyWith(
+          status: DiscussionMessageStatus.success,
+          page: state.page.copyWith(data: updatedData, total: newTotal),
+          clearDeletingMessageId: true,
+          errorMessage: '',
+        ),
+      );
+      return;
+    }
+
+    if (result is FailureResult<void>) {
+      emit(
+        state.copyWith(
+          status: DiscussionMessageStatus.error,
+          errorMessage: result.failure.message,
+          clearDeletingMessageId: true,
         ),
       );
     }

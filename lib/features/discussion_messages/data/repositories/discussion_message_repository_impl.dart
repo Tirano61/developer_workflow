@@ -89,4 +89,20 @@ class DiscussionMessageRepositoryImpl implements DiscussionMessageRepository {
       return FailureResult<DiscussionMessage>(mapExceptionToFailure(error));
     }
   }
+
+  @override
+  Future<Result<void>> deleteMessage({
+    required String discussionId,
+    required String messageId,
+  }) async {
+    try {
+      await _remoteDataSource.deleteMessage(
+        discussionId: discussionId,
+        messageId: messageId,
+      );
+      return const Success<void>(null);
+    } catch (error) {
+      return FailureResult<void>(mapExceptionToFailure(error));
+    }
+  }
 }
