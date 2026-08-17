@@ -32,6 +32,11 @@ abstract class DiscussionMessageRemoteDataSource {
     required String messageId,
     required String content,
   });
+
+  Future<void> deleteMessage({
+    required String discussionId,
+    required String messageId,
+  });
 }
 
 class DiscussionMessageRemoteDataSourceImpl
@@ -178,6 +183,23 @@ class DiscussionMessageRemoteDataSourceImpl
     return DiscussionMessageModel.fromPayload(
       response.data,
       discussionIdFallback: discussionId,
+    );
+  }
+
+  @override
+  Future<void> deleteMessage({
+    required String discussionId,
+    required String messageId,
+  }) async {
+    if (messageId.trim().isEmpty) {
+      throw const ValidationException('A message id is required to delete it.');
+    }
+
+    await _restClient.delete<Object?>(
+      ApiEndpoints.discussionMessageByIds(
+        Uri.encodeComponent(discussionId),
+        Uri.encodeComponent(messageId),
+      ),
     );
   }
 

@@ -13,6 +13,7 @@ import '../../../../core/theme/app_breakpoints.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_radius.dart';
 import '../../../../core/theme/app_spacing.dart';
+import '../../../applications/domain/entities/application.dart';
 import '../../../applications/presentation/bloc/application_bloc.dart';
 import '../../../applications/presentation/bloc/application_event.dart';
 import '../../../applications/presentation/bloc/application_state.dart';
@@ -21,6 +22,7 @@ import '../../../discussion_messages/domain/entities/discussion_message.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_bloc.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_event.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_state.dart';
+import '../../../indicators/domain/entities/indicator.dart';
 import '../../../indicators/presentation/bloc/indicator_bloc.dart';
 import '../../../indicators/presentation/bloc/indicator_event.dart';
 import '../../../indicators/presentation/bloc/indicator_state.dart';
@@ -71,6 +73,11 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   String? _hoveredMessageId;
   _AttachmentOption? _lastAttachmentOption;
   bool _isCopyableErrorDialogOpen = false;
+
+  // Inline editing state
+  String? _editingMessageId;
+  TextEditingController? _editingController;
+  bool _submittingEdit = false;
 
   static const int _maxWebVideoUploadBytes =
       120 * 1024 * 1024; // 120 MB para video en web.
@@ -124,6 +131,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     _clearActiveDiscussionId();
     _messageController.dispose();
     _contentScrollController.dispose();
+    _editingController?.dispose();
     super.dispose();
   }
 
@@ -340,10 +348,18 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
               ..._buildContextChips(
                 label: 'Aplicacion',
                 values: _extractApplicationLabels(discussion),
+                emptyLabel: 'Sin aplicación',
+                onTap: isDeveloper
+                    ? () => _openApplicationSelector(discussion)
+                    : null,
               ),
               ..._buildContextChips(
                 label: 'Indicador',
                 values: _extractIndicatorLabels(discussion),
+                emptyLabel: 'Sin indicador',
+                onTap: isDeveloper
+                    ? () => _openIndicatorSelector(discussion)
+                    : null,
               ),
             ],
           ),
@@ -428,15 +444,21 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
         final isGrouped = _isConsecutiveMessage(previous, message);
         final isOwnMessage =
             currentUserId != null && message.author.id == currentUserId;
-        final canEditMessage = isOwnMessage || isDeveloper;
+        final canEditMessage =
+            isOwnMessage && message.type == DiscussionMessageType.text;
+        final canDeleteMessage = isOwnMessage;
         final isUpdatingThisMessage =
             messageState.isUpdating && messageState.updatingMessageId == message.id;
+        final isDeletingThisMessage =
+            messageState.deletingMessageId == message.id;
 
         return _buildMessageItem(
           message: message,
           isGrouped: isGrouped,
           canEditMessage: canEditMessage,
+          canDeleteMessage: canDeleteMessage,
           isUpdatingThisMessage: isUpdatingThisMessage,
+          isDeletingThisMessage: isDeletingThisMessage,
         );
       },
     );
@@ -446,11 +468,15 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     required DiscussionMessage message,
     required bool isGrouped,
     required bool canEditMessage,
+    required bool canDeleteMessage,
     required bool isUpdatingThisMessage,
+    required bool isDeletingThisMessage,
   }) {
     final showAvatar = !isGrouped;
     final showHeader = !isGrouped;
     final isHovered = _hoveredMessageId == message.id;
+    final isEditingThisMessage = _editingMessageId == message.id;
+    final hasActions = canEditMessage || canDeleteMessage;
 
     return MouseRegion(
       onEnter: (_) {
@@ -529,35 +555,47 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                           style: Theme.of(context).textTheme.labelSmall,
                         ),
                         const Spacer(),
-                        if (canEditMessage)
-                          IconButton(
-                            iconSize: 17,
-                            visualDensity: VisualDensity.compact,
-                            icon: const Icon(Icons.edit_outlined),
-                            tooltip: 'Editar mensaje',
-                            onPressed: isUpdatingThisMessage
-                                ? null
-                                : () => _editMessage(message),
+                        if (hasActions && !isEditingThisMessage)
+                          _buildMessageActionsMenu(
+                            message: message,
+                            canEdit: canEditMessage,
+                            canDelete: canDeleteMessage,
+                            isHovered: isHovered,
+                            isDeletingThisMessage: isDeletingThisMessage,
                           ),
                       ],
                     )
                   else
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 120),
-                        opacity: isHovered && kIsWeb ? 1 : 0,
-                        child: Text(
-                          _formatShortDateTime(message.createdAt),
-                          style: Theme.of(context).textTheme.labelSmall,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        AnimatedOpacity(
+                          duration: const Duration(milliseconds: 120),
+                          opacity: isHovered && kIsWeb ? 1 : 0,
+                          child: Text(
+                            _formatShortDateTime(message.createdAt),
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
                         ),
-                      ),
+                        if (hasActions && !isEditingThisMessage) ...[
+                          const SizedBox(width: AppSpacing.xs),
+                          _buildMessageActionsMenu(
+                            message: message,
+                            canEdit: canEditMessage,
+                            canDelete: canDeleteMessage,
+                            isHovered: isHovered,
+                            isDeletingThisMessage: isDeletingThisMessage,
+                          ),
+                        ],
+                      ],
                     ),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 760),
-                    child: _buildMessageBody(message),
+                    child: isEditingThisMessage
+                        ? _buildInlineEditor(message)
+                        : _buildMessageBody(message),
                   ),
-                  if (isUpdatingThisMessage) ...[
+                  if (isUpdatingThisMessage || isDeletingThisMessage) ...[
                     const SizedBox(height: AppSpacing.xs),
                     const LinearProgressIndicator(minHeight: 2),
                   ],
@@ -567,6 +605,116 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMessageActionsMenu({
+    required DiscussionMessage message,
+    required bool canEdit,
+    required bool canDelete,
+    required bool isHovered,
+    required bool isDeletingThisMessage,
+  }) {
+    // On web: only show menu icon when hovered; on mobile: always visible
+    final visible = kIsWeb ? isHovered : true;
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 120),
+      opacity: visible ? 1.0 : 0.0,
+      child: PopupMenuButton<_MessageAction>(
+        iconSize: 16,
+        padding: EdgeInsets.zero,
+        tooltip: 'Acciones del mensaje',
+        enabled: !isDeletingThisMessage,
+        icon: Icon(
+          Icons.more_horiz_rounded,
+          size: 16,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        itemBuilder: (context) => [
+          if (canEdit)
+            PopupMenuItem<_MessageAction>(
+              value: _MessageAction.edit,
+              child: Row(
+                children: [
+                  const Icon(Icons.edit_outlined, size: 16),
+                  const SizedBox(width: AppSpacing.sm),
+                  const Text('Editar'),
+                ],
+              ),
+            ),
+          if (canDelete)
+            PopupMenuItem<_MessageAction>(
+              value: _MessageAction.delete,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.delete_outline_rounded,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    'Eliminar',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+        onSelected: (action) {
+          switch (action) {
+            case _MessageAction.edit:
+              _startInlineEdit(message);
+            case _MessageAction.delete:
+              _confirmDeleteMessage(message);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildInlineEditor(DiscussionMessage message) {
+    final controller = _editingController;
+    if (controller == null) {
+      return _buildMessageBody(message);
+    }
+
+    final isSubmitting = _submittingEdit;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 8,
+          enabled: !isSubmitting,
+          decoration: const InputDecoration(
+            hintText: 'Editar mensaje...',
+            isDense: true,
+          ),
+          onSubmitted: (_) => _saveInlineEdit(message),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: isSubmitting ? null : _cancelInlineEdit,
+              child: const Text('Cancelar'),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+            FilledButton(
+              onPressed: isSubmitting ? null : () => _saveInlineEdit(message),
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1021,12 +1169,38 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   List<Widget> _buildContextChips({
     required String label,
     required List<String> values,
+    String? emptyLabel,
+    VoidCallback? onTap,
   }) {
+    final canTap = onTap != null;
+
+    Widget wrapChip(Widget chip) {
+      if (!canTap) {
+        return chip;
+      }
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: chip,
+      );
+    }
+
     if (values.isEmpty) {
       return [
-        Chip(
-          visualDensity: VisualDensity.compact,
-          label: Text('$label: -'),
+        wrapChip(
+          Chip(
+            visualDensity: VisualDensity.compact,
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(emptyLabel ?? '$label: Sin asignar'),
+                if (canTap) ...[
+                  const SizedBox(width: 4),
+                  const Icon(Icons.add_rounded, size: 14),
+                ],
+              ],
+            ),
+          ),
         ),
       ];
     }
@@ -1038,12 +1212,25 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     final result = <Widget>[];
     for (final value in visible) {
       result.add(
-        Chip(
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          label: Text(
-            '$label: $value',
-            overflow: TextOverflow.ellipsis,
+        wrapChip(
+          Chip(
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    '$label: $value',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (canTap) ...[
+                  const SizedBox(width: 4),
+                  const Icon(Icons.edit_outlined, size: 13),
+                ],
+              ],
+            ),
           ),
         ),
       );
@@ -1051,10 +1238,12 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
 
     if (overflow > 0) {
       result.add(
-        Chip(
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          label: Text('+$overflow'),
+        wrapChip(
+          Chip(
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            label: Text('+$overflow'),
+          ),
         ),
       );
     }
@@ -1307,47 +1496,78 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     }
   }
 
-  Future<void> _editMessage(DiscussionMessage message) async {
-    final controller = TextEditingController(text: message.content);
+  void _startInlineEdit(DiscussionMessage message) {
+    if (message.type != DiscussionMessageType.text) {
+      return;
+    }
+    _editingController?.dispose();
+    setState(() {
+      _editingMessageId = message.id;
+      _editingController = TextEditingController(text: message.content);
+    });
+  }
 
-    final newContent = await showDialog<String>(
+  void _cancelInlineEdit() {
+    _editingController?.dispose();
+    setState(() {
+      _editingMessageId = null;
+      _editingController = null;
+    });
+  }
+
+  void _saveInlineEdit(DiscussionMessage message) {
+    final content = _editingController?.text.trim() ?? '';
+    if (content.isEmpty) {
+      return;
+    }
+    _submittingEdit = true;
+    context.read<DiscussionMessageBloc>().add(
+      UpdateDiscussionMessageEvent(
+        discussionId: widget.discussionId,
+        messageId: message.id,
+        content: content,
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteMessage(DiscussionMessage message) async {
+    final isAttachment = message.type != DiscussionMessageType.text;
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Editar mensaje'),
-          content: TextField(
-            controller: controller,
-            minLines: 2,
-            maxLines: 6,
-            decoration: const InputDecoration(
-              labelText: 'Contenido',
-            ),
+          title: Text(isAttachment ? '¿Eliminar archivo?' : '¿Eliminar mensaje?'),
+          content: Text(
+            isAttachment
+                ? '¿Eliminar este archivo de la conversación?\nEl archivo también será eliminado.'
+                : '¿Eliminar este mensaje?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancelar'),
             ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Guardar'),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Theme.of(context).colorScheme.onError,
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Eliminar'),
             ),
           ],
         );
       },
     );
 
-    controller.dispose();
-
-    if (!mounted || newContent == null || newContent.isEmpty) {
+    if (!mounted || confirmed != true) {
       return;
     }
 
     context.read<DiscussionMessageBloc>().add(
-      UpdateDiscussionMessageEvent(
+      DeleteDiscussionMessageEvent(
         discussionId: widget.discussionId,
         messageId: message.id,
-        content: newContent,
       ),
     );
   }
@@ -1364,6 +1584,13 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
         state.errorMessage.isNotEmpty) {
       _pendingAttachmentUpload = false;
       _pendingComposerClear = false;
+
+      // On edit error: keep editing state so user can retry
+      if (_submittingEdit) {
+        _submittingEdit = false;
+        _showMessage(state.errorMessage);
+        return;
+      }
 
       final isWebVideoUploadFailure =
           kIsWeb &&
@@ -1390,6 +1617,20 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       }
       _lastAttachmentOption = null;
       return;
+    }
+
+    // Clear inline edit on successful save
+    if (_submittingEdit &&
+        !state.isUpdating &&
+        state.status == DiscussionMessageStatus.success) {
+      _submittingEdit = false;
+      if (mounted) {
+        setState(() {
+          _editingController?.dispose();
+          _editingController = null;
+          _editingMessageId = null;
+        });
+      }
     }
 
     if (_pendingComposerClear &&
@@ -1557,6 +1798,256 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     if (tagBloc.state.tags.isEmpty && tagBloc.state.status != TagStatus.loading) {
       tagBloc.add(const LoadTagsEvent());
     }
+  }
+
+  Future<void> _openApplicationSelector(Discussion discussion) async {
+    final discussionId = discussion.id;
+    if (discussionId == null || discussionId.isEmpty) {
+      return;
+    }
+
+    final appBloc = context.read<ApplicationBloc>();
+    if (appBloc.state.applications.isEmpty) {
+      appBloc.add(const LoadApplicationsEvent());
+    }
+
+    final discussionBloc = context.read<DiscussionBloc>();
+    final selectedIds = Set<String>.from(discussion.resolvedApplicationIds);
+    final compact = _isCompactLayout(context);
+
+    final savedIds = compact
+        ? await _showCatalogSelectorSheet<Application>(
+            title: 'Aplicaciones',
+            bloc: appBloc,
+            items: appBloc.state.applications,
+            selectedIds: selectedIds,
+            idOf: (app) => app.id ?? '',
+            nameOf: (app) => app.name,
+            isLoading: appBloc.state.status == ApplicationStatus.loading,
+          )
+        : await _showCatalogSelectorDialog<Application>(
+            title: 'Aplicaciones',
+            bloc: appBloc,
+            items: appBloc.state.applications,
+            selectedIds: selectedIds,
+            idOf: (app) => app.id ?? '',
+            nameOf: (app) => app.name,
+            isLoading: appBloc.state.status == ApplicationStatus.loading,
+          );
+
+    if (!mounted || savedIds == null) {
+      return;
+    }
+
+    discussionBloc.add(
+      UpdateDiscussionEvent(
+        discussion.copyWith(
+          applicationIds: savedIds.toList(),
+          applications: const [],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openIndicatorSelector(Discussion discussion) async {
+    final discussionId = discussion.id;
+    if (discussionId == null || discussionId.isEmpty) {
+      return;
+    }
+
+    final indicatorBloc = context.read<IndicatorBloc>();
+    if (indicatorBloc.state.indicators.isEmpty) {
+      indicatorBloc.add(const LoadIndicatorsEvent());
+    }
+
+    final discussionBloc = context.read<DiscussionBloc>();
+    final selectedIds = Set<String>.from(discussion.resolvedIndicatorIds);
+    final compact = _isCompactLayout(context);
+
+    final savedIds = compact
+        ? await _showCatalogSelectorSheet<Indicator>(
+            title: 'Indicadores',
+            bloc: indicatorBloc,
+            items: indicatorBloc.state.indicators,
+            selectedIds: selectedIds,
+            idOf: (ind) => ind.id ?? '',
+            nameOf: (ind) => ind.name,
+            isLoading: indicatorBloc.state.status == IndicatorStatus.loading,
+          )
+        : await _showCatalogSelectorDialog<Indicator>(
+            title: 'Indicadores',
+            bloc: indicatorBloc,
+            items: indicatorBloc.state.indicators,
+            selectedIds: selectedIds,
+            idOf: (ind) => ind.id ?? '',
+            nameOf: (ind) => ind.name,
+            isLoading: indicatorBloc.state.status == IndicatorStatus.loading,
+          );
+
+    if (!mounted || savedIds == null) {
+      return;
+    }
+
+    discussionBloc.add(
+      UpdateDiscussionEvent(
+        discussion.copyWith(
+          indicatorIds: savedIds.toList(),
+          indicators: const [],
+        ),
+      ),
+    );
+  }
+
+  Future<Set<String>?> _showCatalogSelectorDialog<T>({
+    required String title,
+    required Object bloc,
+    required List<T> items,
+    required Set<String> selectedIds,
+    required String Function(T) idOf,
+    required String Function(T) nameOf,
+    required bool isLoading,
+  }) {
+    return showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: Text(title),
+              content: SizedBox(
+                width: 420,
+                child: _buildCatalogList(
+                  items: items,
+                  selectedIds: selectedIds,
+                  idOf: idOf,
+                  nameOf: nameOf,
+                  isLoading: isLoading,
+                  setDialogState: setDialogState,
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, Set<String>.from(selectedIds)),
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<Set<String>?> _showCatalogSelectorSheet<T>({
+    required String title,
+    required Object bloc,
+    required List<T> items,
+    required Set<String> selectedIds,
+    required String Function(T) idOf,
+    required String Function(T) nameOf,
+    required bool isLoading,
+  }) {
+    return showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setDialogState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: AppSpacing.sm),
+                    Flexible(
+                      child: _buildCatalogList(
+                        items: items,
+                        selectedIds: selectedIds,
+                        idOf: idOf,
+                        nameOf: nameOf,
+                        isLoading: isLoading,
+                        setDialogState: setDialogState,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            child: const Text('Cancelar'),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                Navigator.pop(sheetContext, Set<String>.from(selectedIds)),
+                            child: const Text('Guardar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildCatalogList<T>({
+    required List<T> items,
+    required Set<String> selectedIds,
+    required String Function(T) idOf,
+    required String Function(T) nameOf,
+    required bool isLoading,
+    required void Function(VoidCallback fn) setDialogState,
+  }) {
+    if (isLoading && items.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (items.isEmpty) {
+      return const Center(child: Text('No hay elementos disponibles.'));
+    }
+
+    return ListView(
+      shrinkWrap: true,
+      children: items
+          .where((item) => idOf(item).isNotEmpty)
+          .map(
+            (item) => CheckboxListTile(
+              dense: true,
+              value: selectedIds.contains(idOf(item)),
+              title: Text(nameOf(item)),
+              onChanged: (checked) {
+                setDialogState(() {
+                  if (checked == true) {
+                    selectedIds.add(idOf(item));
+                  } else {
+                    selectedIds.remove(idOf(item));
+                  }
+                });
+              },
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   String _statusLabel(DiscussionRecordStatus status) {
@@ -2060,6 +2551,8 @@ class _OptimizedImageResult {
   final String fileName;
   final bool wasOptimized;
 }
+
+enum _MessageAction { edit, delete }
 
 enum _AttachmentOption {
   image,

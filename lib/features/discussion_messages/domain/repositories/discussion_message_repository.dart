@@ -29,4 +29,9 @@ abstract class DiscussionMessageRepository {
     required String messageId,
     required String content,
   });
+
+  Future<Result<void>> deleteMessage({
+    required String discussionId,
+    required String messageId,
+  });
 }
