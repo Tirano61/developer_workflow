@@ -5,6 +5,7 @@ class ApplicationModel {
     this.id,
     required this.name,
     this.description,
+    this.active = true,
     this.createdAt,
     this.updatedAt,
   });
@@ -12,6 +13,7 @@ class ApplicationModel {
   final String? id;
   final String name;
   final String? description;
+  final bool active;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -24,6 +26,7 @@ class ApplicationModel {
           ) ??
           '',
       description: _readString(json, const ['description', 'detail']),
+      active: _readBool(json, const ['active']) ?? true,
       createdAt: _readDateTime(json, const ['createdAt', 'created_at']),
       updatedAt: _readDateTime(json, const ['updatedAt', 'updated_at']),
     );
@@ -47,6 +50,7 @@ class ApplicationModel {
       id: id,
       name: name,
       description: description,
+      active: active,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );
@@ -57,6 +61,7 @@ class ApplicationModel {
       id: entity.id,
       name: entity.name,
       description: entity.description,
+      active: entity.active,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     );
@@ -85,5 +90,32 @@ class ApplicationModel {
     }
 
     return DateTime.tryParse(value);
+  }
+
+  static bool? _readBool(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value == null) {
+        continue;
+      }
+
+      if (value is bool) {
+        return value;
+      }
+
+      if (value is num) {
+        return value != 0;
+      }
+
+      final parsed = value.toString().trim().toLowerCase();
+      if (parsed == 'true' || parsed == '1') {
+        return true;
+      }
+      if (parsed == 'false' || parsed == '0') {
+        return false;
+      }
+    }
+
+    return null;
   }
 }

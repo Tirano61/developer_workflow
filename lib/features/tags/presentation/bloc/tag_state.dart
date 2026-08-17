@@ -19,12 +19,13 @@ class TagState {
     TagStatus? status,
     List<Tag>? tags,
     Tag? selectedTag,
+    bool clearSelectedTag = false,
     String? errorMessage,
   }) {
     return TagState(
       status: status ?? this.status,
       tags: tags ?? this.tags,
-      selectedTag: selectedTag ?? this.selectedTag,
+      selectedTag: clearSelectedTag ? null : selectedTag ?? this.selectedTag,
       errorMessage: errorMessage ?? this.errorMessage,
     );
   }

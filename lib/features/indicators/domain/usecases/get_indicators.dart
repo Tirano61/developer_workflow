@@ -7,7 +7,7 @@ class GetIndicators {
 
   final IndicatorRepository _repository;
 
-  Future<Result<List<Indicator>>> call() {
-    return _repository.getIndicators();
+  Future<Result<List<Indicator>>> call({bool includeInactive = false}) {
+    return _repository.getIndicators(includeInactive: includeInactive);
   }
 }

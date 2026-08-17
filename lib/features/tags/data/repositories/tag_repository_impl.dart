@@ -12,9 +12,11 @@ class TagRepositoryImpl implements TagRepository {
   final TagRemoteDataSource _remoteDataSource;
 
   @override
-  Future<Result<List<Tag>>> getTags() async {
+  Future<Result<List<Tag>>> getTags({bool includeInactive = false}) async {
     try {
-      final models = await _remoteDataSource.getTags();
+      final models = await _remoteDataSource.getTags(
+        includeInactive: includeInactive,
+      );
       return Success<List<Tag>>(
         models.map((model) => model.toEntity()).toList(growable: false),
       );
@@ -27,6 +29,32 @@ class TagRepositoryImpl implements TagRepository {
   Future<Result<Tag>> createTag(Tag tag) async {
     try {
       final model = await _remoteDataSource.createTag(TagModel.fromEntity(tag));
+      return Success<Tag>(model.toEntity());
+    } catch (error) {
+      return FailureResult<Tag>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
+  Future<Result<Tag>> updateTag(Tag tag) async {
+    try {
+      final model = await _remoteDataSource.updateTag(TagModel.fromEntity(tag));
+      return Success<Tag>(model.toEntity());
+    } catch (error) {
+      return FailureResult<Tag>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
+  Future<Result<Tag>> setTagActive({
+    required String id,
+    required bool active,
+  }) async {
+    try {
+      final model = await _remoteDataSource.setTagActive(
+        id: id,
+        active: active,
+      );
       return Success<Tag>(model.toEntity());
     } catch (error) {
       return FailureResult<Tag>(mapExceptionToFailure(error));

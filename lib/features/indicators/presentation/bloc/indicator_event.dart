@@ -5,7 +5,9 @@ sealed class IndicatorEvent {
 }
 
 class LoadIndicatorsEvent extends IndicatorEvent {
-  const LoadIndicatorsEvent();
+  const LoadIndicatorsEvent({this.includeInactive = false});
+
+  final bool includeInactive;
 }
 
 class LoadIndicatorEvent extends IndicatorEvent {
@@ -24,4 +26,17 @@ class UpdateIndicatorEvent extends IndicatorEvent {
   const UpdateIndicatorEvent(this.indicator);
 
   final Indicator indicator;
+}
+
+class SetIndicatorActiveEvent extends IndicatorEvent {
+  const SetIndicatorActiveEvent({required this.id, required this.active});
+
+  final String id;
+  final bool active;
+}
+
+class LoadIndicatorApplicationsEvent extends IndicatorEvent {
+  const LoadIndicatorApplicationsEvent(this.indicatorId);
+
+  final String indicatorId;
 }

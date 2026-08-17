@@ -7,7 +7,7 @@ class GetApplications {
 
   final ApplicationRepository _repository;
 
-  Future<Result<List<Application>>> call() {
-    return _repository.getApplications();
+  Future<Result<List<Application>>> call({bool includeInactive = false}) {
+    return _repository.getApplications(includeInactive: includeInactive);
   }
 }

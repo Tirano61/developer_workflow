@@ -514,7 +514,7 @@
 					}
 				},
 				{
-					"name": "Update discussion (auth)",
+					"name": "Update discussion (auth, context only developer)",
 					"request": {
 						"method": "PATCH",
 						"header": [
@@ -602,7 +602,7 @@
 					}
 				},
 				{
-					"name": "Update discussion message (auth)",
+					"name": "Update discussion message (author only)",
 					"request": {
 						"method": "PATCH",
 						"header": [
@@ -619,6 +619,19 @@
 							"mode": "raw",
 							"raw": "{\n  \"content\": \"Mensaje actualizado\"\n}"
 						},
+						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/messages/{{messageId}}"
+					}
+				},
+				{
+					"name": "Delete discussion message (author only)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
 						"url": "{{DWbaseUrl}}/develop-workflow/discussions/{{discussionId}}/messages/{{messageId}}"
 					}
 				},

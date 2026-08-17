@@ -1,5 +1,6 @@
 import '../../../../core/error/failure_mapper.dart';
 import '../../../../core/error/result.dart';
+import '../../../indicators/domain/entities/indicator.dart';
 import '../../domain/entities/application.dart';
 import '../../domain/repositories/application_repository.dart';
 import '../datasources/application_remote_data_source.dart';
@@ -12,9 +13,13 @@ class ApplicationRepositoryImpl implements ApplicationRepository {
   final ApplicationRemoteDataSource _remoteDataSource;
 
   @override
-  Future<Result<List<Application>>> getApplications() async {
+  Future<Result<List<Application>>> getApplications({
+    bool includeInactive = false,
+  }) async {
     try {
-      final models = await _remoteDataSource.getApplications();
+      final models = await _remoteDataSource.getApplications(
+        includeInactive: includeInactive,
+      );
       final entities = models.map((model) => model.toEntity()).toList(growable: false);
       return Success<List<Application>>(entities);
     } catch (error) {
@@ -51,6 +56,69 @@ class ApplicationRepositoryImpl implements ApplicationRepository {
       return Success<Application>(updated.toEntity());
     } catch (error) {
       return FailureResult<Application>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
+  Future<Result<Application>> setApplicationActive({
+    required String id,
+    required bool active,
+  }) async {
+    try {
+      final updated = await _remoteDataSource.setApplicationActive(
+        id: id,
+        active: active,
+      );
+      return Success<Application>(updated.toEntity());
+    } catch (error) {
+      return FailureResult<Application>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
+  Future<Result<List<Indicator>>> getIndicatorsByApplicationId(
+    String applicationId,
+  ) async {
+    try {
+      final models = await _remoteDataSource.getIndicatorsByApplicationId(
+        applicationId,
+      );
+      final entities = models.map((item) => item.toEntity()).toList(growable: false);
+      return Success<List<Indicator>>(entities);
+    } catch (error) {
+      return FailureResult<List<Indicator>>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
+  Future<Result<void>> addIndicatorToApplication({
+    required String applicationId,
+    required String indicatorId,
+  }) async {
+    try {
+      await _remoteDataSource.addIndicatorToApplication(
+        applicationId: applicationId,
+        indicatorId: indicatorId,
+      );
+      return Success<void>(null);
+    } catch (error) {
+      return FailureResult<void>(mapExceptionToFailure(error));
+    }
+  }
+
+  @override
+  Future<Result<void>> removeIndicatorFromApplication({
+    required String applicationId,
+    required String indicatorId,
+  }) async {
+    try {
+      await _remoteDataSource.removeIndicatorFromApplication(
+        applicationId: applicationId,
+        indicatorId: indicatorId,
+      );
+      return Success<void>(null);
+    } catch (error) {
+      return FailureResult<void>(mapExceptionToFailure(error));
     }
   }
 }

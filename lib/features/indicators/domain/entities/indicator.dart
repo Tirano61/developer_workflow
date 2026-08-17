@@ -3,6 +3,7 @@ class Indicator {
     this.id,
     required this.name,
     this.description,
+    this.active = true,
     this.createdAt,
     this.updatedAt,
   });
@@ -10,6 +11,7 @@ class Indicator {
   final String? id;
   final String name;
   final String? description;
+  final bool active;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -17,6 +19,7 @@ class Indicator {
     String? id,
     String? name,
     String? description,
+    bool? active,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -24,6 +27,7 @@ class Indicator {
       id: id ?? this.id,
       name: name ?? this.name,
       description: description ?? this.description,
+      active: active ?? this.active,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
