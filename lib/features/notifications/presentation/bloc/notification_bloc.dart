@@ -199,6 +199,7 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
 
     final notificationType = event.data['type']?.trim() ?? '';
     final notificationDiscussionId = _readDiscussionId(event.data);
+    final syncType = _resolveSyncType(notificationType);
 
     var nextState = state.copyWith(
       lastNotificationType: notificationType,
@@ -207,21 +208,46 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
       errorMessage: '',
     );
 
-    if (_shouldRefreshActiveDiscussion(
-      notificationType: notificationType,
+    if (_shouldSyncActiveDiscussion(
+      syncType: syncType,
       notificationDiscussionId: notificationDiscussionId,
       activeDiscussionId: state.activeDiscussionId,
     )) {
       if (kDebugMode) {
-        debugPrint(
-          '[FCM] active discussion matched - ${_timestampNow()} - '
-          'discussionId=${notificationDiscussionId ?? '-'}',
-        );
+        switch (syncType) {
+          case NotificationSyncType.messagesOnly:
+            debugPrint(
+              '[SILENT SYNC] MESSAGE_UPDATED discussionId=${notificationDiscussionId ?? '-'}',
+            );
+            break;
+          case NotificationSyncType.contextOnly:
+            debugPrint(
+              '[SILENT SYNC] CONTEXT_CHANGED discussionId=${notificationDiscussionId ?? '-'}',
+            );
+            break;
+          case NotificationSyncType.discussionAndMessages:
+            debugPrint(
+              '[FCM] active discussion matched - ${_timestampNow()} - '
+              'discussionId=${notificationDiscussionId ?? '-'}',
+            );
+            break;
+          case NotificationSyncType.none:
+            break;
+        }
+      }
+
+      if (kDebugMode) {
+        if (notificationType == 'DISCUSSION_MESSAGE_DELETED') {
+          debugPrint(
+            '[SILENT SYNC] MESSAGE_DELETED discussionId=${notificationDiscussionId ?? '-'}',
+          );
+        }
       }
 
       nextState = nextState.copyWith(
-        refreshDiscussionId: notificationDiscussionId,
-        refreshRequestVersion: state.refreshRequestVersion + 1,
+        syncType: syncType,
+        syncDiscussionId: notificationDiscussionId,
+        syncVersion: state.syncVersion + 1,
       );
     }
 
@@ -412,12 +438,26 @@ class NotificationBloc extends Bloc<NotificationEvent, NotificationState> {
     return value;
   }
 
-  bool _shouldRefreshActiveDiscussion({
-    required String notificationType,
+  NotificationSyncType _resolveSyncType(String notificationType) {
+    switch (notificationType) {
+      case 'DISCUSSION_MESSAGE':
+        return NotificationSyncType.discussionAndMessages;
+      case 'DISCUSSION_MESSAGE_UPDATED':
+      case 'DISCUSSION_MESSAGE_DELETED':
+        return NotificationSyncType.messagesOnly;
+      case 'DISCUSSION_CONTEXT_CHANGED':
+        return NotificationSyncType.contextOnly;
+      default:
+        return NotificationSyncType.none;
+    }
+  }
+
+  bool _shouldSyncActiveDiscussion({
+    required NotificationSyncType syncType,
     required String? notificationDiscussionId,
     required String? activeDiscussionId,
   }) {
-    if (notificationType != 'DISCUSSION_MESSAGE') {
+    if (syncType == NotificationSyncType.none) {
       return false;
     }
 

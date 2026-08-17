@@ -2,7 +2,7 @@
 	"info": {
 		"name": "Develop Workflow - Endpoints",
 		"_postman_id": "f0f9a3a3-8c7a-4c61-9c15-1e22f8f0d123",
-		"description": "Coleccion de endpoints del modulo develop-workflow.",
+		"description": "Coleccion de endpoints del modulo develop-workflow. Incluye eventos FCM visibles y silent sync (data-only) de Fase 8E.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -515,6 +515,7 @@
 				},
 				{
 					"name": "Update discussion (auth, context only developer)",
+					"description": "Si cambia realmente applicationIds y/o indicatorIds, backend emite FCM silent sync data-only: DISCUSSION_CONTEXT_CHANGED (sin notification visible).",
 					"request": {
 						"method": "PATCH",
 						"header": [
@@ -603,6 +604,7 @@
 				},
 				{
 					"name": "Update discussion message (author only)",
+					"description": "Tras edicion exitosa, backend emite FCM silent sync data-only: DISCUSSION_MESSAGE_UPDATED (sin notification visible).",
 					"request": {
 						"method": "PATCH",
 						"header": [
@@ -624,6 +626,7 @@
 				},
 				{
 					"name": "Delete discussion message (author only)",
+					"description": "Tras eliminacion completa (Cloudinary si aplica + DB), backend emite FCM silent sync data-only: DISCUSSION_MESSAGE_DELETED (sin notification visible).",
 					"request": {
 						"method": "DELETE",
 						"header": [
@@ -692,6 +695,7 @@
 				},
 				{
 					"name": "Add application to discussion (developer)",
+					"description": "Si la relacion se agrega correctamente, backend emite FCM silent sync data-only: DISCUSSION_CONTEXT_CHANGED (sin notification visible).",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -713,6 +717,7 @@
 				},
 				{
 					"name": "Remove application from discussion (developer)",
+					"description": "Si la relacion se elimina correctamente, backend emite FCM silent sync data-only: DISCUSSION_CONTEXT_CHANGED (sin notification visible).",
 					"request": {
 						"method": "DELETE",
 						"header": [
@@ -726,6 +731,7 @@
 				},
 				{
 					"name": "Add indicator to discussion (developer)",
+					"description": "Si la relacion se agrega correctamente, backend emite FCM silent sync data-only: DISCUSSION_CONTEXT_CHANGED (sin notification visible).",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -747,6 +753,7 @@
 				},
 				{
 					"name": "Remove indicator from discussion (developer)",
+					"description": "Si la relacion se elimina correctamente, backend emite FCM silent sync data-only: DISCUSSION_CONTEXT_CHANGED (sin notification visible).",
 					"request": {
 						"method": "DELETE",
 						"header": [

@@ -61,6 +61,8 @@ class DiscussionDetailPage extends StatefulWidget {
 
 class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     with RouteAware {
+  static const double _messageActionSlotWidth = 28;
+
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _contentScrollController = ScrollController();
 
@@ -169,6 +171,11 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
           listenWhen: (previous, current) =>
               previous.refreshRequestVersion != current.refreshRequestVersion,
           listener: _onNotificationRefreshRequested,
+        ),
+        BlocListener<NotificationBloc, NotificationState>(
+          listenWhen: (previous, current) =>
+              previous.syncVersion != current.syncVersion,
+          listener: _onNotificationSilentSyncRequested,
         ),
       ],
       child: Column(
@@ -555,14 +562,17 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                           style: Theme.of(context).textTheme.labelSmall,
                         ),
                         const Spacer(),
-                        if (hasActions && !isEditingThisMessage)
-                          _buildMessageActionsMenu(
+                        _buildMessageActionSlot(
+                          hasActions: hasActions,
+                          isEditingThisMessage: isEditingThisMessage,
+                          menu: _buildMessageActionsMenu(
                             message: message,
                             canEdit: canEditMessage,
                             canDelete: canDeleteMessage,
                             isHovered: isHovered,
                             isDeletingThisMessage: isDeletingThisMessage,
                           ),
+                        ),
                       ],
                     )
                   else
@@ -577,16 +587,18 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                             style: Theme.of(context).textTheme.labelSmall,
                           ),
                         ),
-                        if (hasActions && !isEditingThisMessage) ...[
-                          const SizedBox(width: AppSpacing.xs),
-                          _buildMessageActionsMenu(
+                        const SizedBox(width: AppSpacing.xs),
+                        _buildMessageActionSlot(
+                          hasActions: hasActions,
+                          isEditingThisMessage: isEditingThisMessage,
+                          menu: _buildMessageActionsMenu(
                             message: message,
                             canEdit: canEditMessage,
                             canDelete: canDeleteMessage,
                             isHovered: isHovered,
                             isDeletingThisMessage: isDeletingThisMessage,
                           ),
-                        ],
+                        ),
                       ],
                     ),
                   ConstrainedBox(
@@ -673,6 +685,21 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
           }
         },
       ),
+    );
+  }
+
+  Widget _buildMessageActionSlot({
+    required bool hasActions,
+    required bool isEditingThisMessage,
+    required Widget menu,
+  }) {
+    if (!hasActions || isEditingThisMessage) {
+      return const SizedBox(width: _messageActionSlotWidth);
+    }
+
+    return SizedBox(
+      width: _messageActionSlotWidth,
+      child: Align(alignment: Alignment.centerRight, child: menu),
     );
   }
 
@@ -1279,6 +1306,30 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     _refreshDiscussionAndMessages();
   }
 
+  void _onNotificationSilentSyncRequested(
+    BuildContext context,
+    NotificationState state,
+  ) {
+    final syncDiscussionId = state.syncDiscussionId?.trim();
+    if (syncDiscussionId == null || syncDiscussionId != widget.discussionId) {
+      return;
+    }
+
+    switch (state.syncType) {
+      case NotificationSyncType.discussionAndMessages:
+        _refreshDiscussionAndMessages();
+        break;
+      case NotificationSyncType.messagesOnly:
+        _refreshMessagesOnly();
+        break;
+      case NotificationSyncType.contextOnly:
+        _refreshDiscussionOnly();
+        break;
+      case NotificationSyncType.none:
+        break;
+    }
+  }
+
   void _onDiscussionStateChanged(BuildContext context, DiscussionState state) {
     if (state.status == DiscussionStatus.error && state.errorMessage.isNotEmpty) {
       _showMessage(state.errorMessage);
@@ -1318,6 +1369,25 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
         limit: 50,
       ),
     );
+  }
+
+  void _refreshMessagesOnly() {
+    debugPrint(
+      '[DISCUSSION] messages refresh dispatched - ${_timestampNow()} - discussionId=${widget.discussionId}',
+    );
+    context.read<DiscussionMessageBloc>().add(
+      RefreshDiscussionMessagesEvent(
+        discussionId: widget.discussionId,
+        limit: 50,
+      ),
+    );
+  }
+
+  void _refreshDiscussionOnly() {
+    debugPrint(
+      '[DISCUSSION] context refresh dispatched - ${_timestampNow()} - discussionId=${widget.discussionId}',
+    );
+    _loadDiscussion();
   }
 
   void _loadMoreMessages(DiscussionMessageState state) {
