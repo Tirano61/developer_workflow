@@ -254,51 +254,66 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Wrap(
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.sm,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                FilterChip(
-                  label: const Text('Todas'),
-                  selected: _viewFilter == _DiscussionViewFilter.all,
-                  onSelected: (_) => _setViewFilter(_DiscussionViewFilter.all),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    FilterChip(
+                      label: const Text('Todas'),
+                      selected: _viewFilter == _DiscussionViewFilter.all,
+                      onSelected: (_) =>
+                          _setViewFilter(_DiscussionViewFilter.all),
+                    ),
+                    FilterChip(
+                      label: const Text('Mis discussions'),
+                      selected: _viewFilter == _DiscussionViewFilter.mine,
+                      onSelected: (_) =>
+                          _setViewFilter(_DiscussionViewFilter.mine),
+                    ),
+                    if (isDeveloper)
+                      FilterChip(
+                        label: const Text('Asignadas a mi'),
+                        selected: _viewFilter ==
+                            _DiscussionViewFilter.assignedToMe,
+                        onSelected: (_) =>
+                            _setViewFilter(_DiscussionViewFilter.assignedToMe),
+                      ),
+                  ],
                 ),
-                FilterChip(
-                  label: const Text('Mis discussions'),
-                  selected: _viewFilter == _DiscussionViewFilter.mine,
-                  onSelected: (_) => _setViewFilter(_DiscussionViewFilter.mine),
-                ),
-                if (isDeveloper)
-                  FilterChip(
-                    label: const Text('Asignadas a mi'),
-                    selected: _viewFilter == _DiscussionViewFilter.assignedToMe,
-                    onSelected: (_) =>
-                        _setViewFilter(_DiscussionViewFilter.assignedToMe),
-                  ),
-                FilterChip(
-                  label: const Text('No leidas'),
-                  selected: _unreadOnly,
-                  onSelected: (selected) {
-                    setState(() {
-                      _unreadOnly = selected;
-                    });
-                    _requestDiscussions();
-                  },
-                ),
-                OutlinedButton.icon(
-                  onPressed: _openAdvancedFilters,
-                  icon: const Icon(Icons.tune_rounded, size: 18),
-                  label: const Text('Filtros'),
-                ),
-                if (_hasAdvancedFilters)
-                  OutlinedButton(
-                    onPressed: _clearAdvancedFilters,
-                    child: const Text('Limpiar filtros'),
-                  ),
-                IconButton(
-                  tooltip: 'Recargar',
-                  onPressed: _requestDiscussions,
-                  icon: const Icon(Icons.refresh),
+                const SizedBox(height: AppSpacing.sm),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    FilterChip(
+                      label: const Text('No leídas'),
+                      selected: _unreadOnly,
+                      onSelected: (selected) {
+                        setState(() {
+                          _unreadOnly = selected;
+                        });
+                        _requestDiscussions();
+                      },
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _openAdvancedFilters,
+                      icon: const Icon(Icons.tune_rounded, size: 18),
+                      label: const Text('Filtros'),
+                    ),
+                    if (_hasAdvancedFilters)
+                      OutlinedButton(
+                        onPressed: _clearAdvancedFilters,
+                        child: const Text('Limpiar filtros'),
+                      ),
+                    OutlinedButton.icon(
+                      onPressed: _requestDiscussions,
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -308,7 +323,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
             ElevatedButton.icon(
               onPressed: _openDiscussionCreate,
               icon: const Icon(Icons.add),
-              label: const Text('Nueva discusion'),
+              label: const Text('Nueva discussion'),
             ),
           ],
         ],
@@ -341,7 +356,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
           ),
           const SizedBox(width: AppSpacing.sm),
           _DwKanbanColumn(
-            title: 'Revision',
+            title: 'Revisión',
             accent: context.semanticColors.statusReview,
             items: _itemsForStatus(grouped, DiscussionRecordStatus.review),
             state: state,
@@ -395,7 +410,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
   }) {
     final entries = <(DiscussionRecordStatus, String)>[
       (DiscussionRecordStatus.newDiscussion, 'Entrada'),
-      (DiscussionRecordStatus.review, 'Revision'),
+      (DiscussionRecordStatus.review, 'Revisión'),
       (DiscussionRecordStatus.inProgress, 'Trabajando'),
       (DiscussionRecordStatus.resolved, 'Resuelto'),
     ];
@@ -911,7 +926,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
       case DiscussionRecordStatus.newDiscussion:
         return 'Entrada';
       case DiscussionRecordStatus.review:
-        return 'Revision';
+        return 'Revisión';
       case DiscussionRecordStatus.inProgress:
         return 'Trabajando';
       case DiscussionRecordStatus.resolved:

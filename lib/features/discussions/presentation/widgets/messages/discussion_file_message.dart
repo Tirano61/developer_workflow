@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../../core/theme/app_radius.dart';
+import '../../../../../core/theme/app_spacing.dart';
 import '../../../../discussion_messages/domain/entities/discussion_message.dart';
 import 'discussion_attachment_helpers.dart';
 
@@ -32,7 +33,7 @@ class DiscussionFileMessage extends StatelessWidget {
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
@@ -42,7 +43,7 @@ class DiscussionFileMessage extends StatelessWidget {
           child: Row(
             children: [
               Icon(resolveAttachmentIcon(message)),
-              const SizedBox(width: 10),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,7 +70,10 @@ class DiscussionFileMessage extends StatelessWidget {
             ],
           ),
         ),
-        if (caption.isNotEmpty) ...[const SizedBox(height: 8), Text(caption)],
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(caption),
+        ],
       ],
     );
   }

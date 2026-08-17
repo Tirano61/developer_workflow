@@ -45,13 +45,6 @@ class DiscussionBoardCard extends StatelessWidget {
               Row(
                 children: [
                   _DwTypeChip(type: discussion.type),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text (
-                    "Creador: ",
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  _DwCreatorPill(creator: discussion.createdBy),
                   const Spacer(),
                   _DwUnreadIndicator(isUnread: discussion.isUnread),
                 ],
@@ -71,6 +64,7 @@ class DiscussionBoardCard extends StatelessWidget {
               _DwContextChips(discussion: discussion),
               const SizedBox(height: AppSpacing.sm),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: _DwAssigneeChips(
@@ -78,9 +72,16 @@ class DiscussionBoardCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    _relativeActivity(discussion),
-                    style: Theme.of(context).textTheme.labelSmall,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        _relativeActivity(discussion),
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      const SizedBox(height: 2),
+                      _DwCreatorMeta(creator: discussion.createdBy),
+                    ],
                   ),
                 ],
               ),
@@ -91,18 +92,28 @@ class DiscussionBoardCard extends StatelessWidget {
                   runSpacing: AppSpacing.xs,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    IconButton.filledTonal(
+                    IconButton(
                       onPressed: isBusy ? null : onAssignToMe,
                       tooltip: 'Asignarme',
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                      ),
                       icon: const Icon(
                         Icons.person_add_alt_1_rounded,
-                        size: 18,
+                        size: 17,
                       ),
                     ),
-                    IconButton.filledTonal(
+                    IconButton(
                       onPressed: isBusy ? null : onManageAssignments,
                       tooltip: 'Asignaciones',
-                      icon: const Icon(Icons.groups_2_outlined, size: 18),
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                      ),
+                      icon: const Icon(Icons.groups_2_outlined, size: 17),
                     ),
                     _DwStatusMenu(
                       currentStatus: discussion.status,
@@ -187,77 +198,37 @@ class _DwUnreadIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!isUnread) {
-      return Text('Leido', style: Theme.of(context).textTheme.labelSmall);
+      return const SizedBox.shrink();
     }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: context.semanticColors.unread,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: AppSpacing.xs),
-        Text(
-          'No leido',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: context.semanticColors.unread,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        color: context.semanticColors.unread,
+        shape: BoxShape.circle,
+      ),
     );
   }
 }
 
-class _DwCreatorPill extends StatelessWidget {
-  const _DwCreatorPill({required this.creator});
+class _DwCreatorMeta extends StatelessWidget {
+  const _DwCreatorMeta({required this.creator});
 
   final DiscussionCreator? creator;
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.secondary;
     final name = _displayName(creator);
 
-    return Container(
+    return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 170),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.xs,
-        vertical: 2,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-        border: Border.all(color: accent),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircleAvatar(
-            radius: 9,
-            backgroundColor: accent.withValues(alpha: 0.18),
-            child: Text(
-              _initials(name),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: accent,
-                  ),
-            ),
-          ),
-          const SizedBox(width: AppSpacing.xs),
-          Flexible(
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall,
-            ),
-          ),
-        ],
+      child: Text(
+        'Creado por $name',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.right,
+        style: Theme.of(context).textTheme.labelSmall,
       ),
     );
   }
@@ -281,22 +252,6 @@ class _DwCreatorPill extends StatelessWidget {
     return 'Sin creador';
   }
 
-  static String _initials(String fullName) {
-    final parts = fullName
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList(growable: false);
-    if (parts.isEmpty) {
-      return '?';
-    }
-    if (parts.length == 1) {
-      return parts.first.substring(0, 1).toUpperCase();
-    }
-    final first = parts.first.substring(0, 1).toUpperCase();
-    final last = parts.last.substring(0, 1).toUpperCase();
-    return '$first$last';
-  }
 }
 
 class _DwContextChips extends StatelessWidget {
@@ -526,7 +481,7 @@ class _DwStatusMenu extends StatelessWidget {
       case DiscussionRecordStatus.newDiscussion:
         return 'Entrada';
       case DiscussionRecordStatus.review:
-        return 'Revision';
+        return 'Revisión';
       case DiscussionRecordStatus.inProgress:
         return 'Trabajando';
       case DiscussionRecordStatus.resolved:

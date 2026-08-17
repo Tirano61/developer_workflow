@@ -4,6 +4,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/theme/app_radius.dart';
+import '../../../../../core/theme/app_spacing.dart';
 import 'discussion_web_video_surface_stub.dart'
   if (dart.library.html) 'discussion_web_video_surface_web.dart';
 
@@ -144,7 +145,7 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(AppSpacing.sm),
           decoration: BoxDecoration(
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
@@ -153,7 +154,10 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
           ),
           child: _buildVideoContent(context),
         ),
-        if (caption.isNotEmpty) ...[const SizedBox(height: 8), Text(caption)],
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(caption),
+        ],
       ],
     );
   }

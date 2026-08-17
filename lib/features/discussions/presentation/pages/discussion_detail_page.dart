@@ -216,7 +216,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Discussion Detail'),
+        title: const Text('Detalle de discussion'),
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(true),
           icon: const Icon(Icons.arrow_back_rounded),
@@ -295,9 +295,9 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
-        AppSpacing.md,
+        AppSpacing.sm,
         AppSpacing.lg,
-        AppSpacing.md,
+        AppSpacing.sm,
       ),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
@@ -336,18 +336,16 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
               ],
             ],
           ),
-          const SizedBox(height: AppSpacing.sm),
-          _buildCreatorSection(discussion),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             _normalizedTitle(discussion.title),
-            maxLines: compact ? 3 : 2,
+            maxLines: compact ? 2 : 2,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
           ),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: AppSpacing.xs),
           Wrap(
             spacing: AppSpacing.xs,
             runSpacing: AppSpacing.xs,
@@ -372,12 +370,25 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
           ),
           const SizedBox(height: AppSpacing.sm),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: _buildAssigneeSection(
-                  discussion: discussion,
-                  isDeveloper: isDeveloper,
-                  disabled: assigneesBusy,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildAssigneeSection(
+                      discussion: discussion,
+                      isDeveloper: isDeveloper,
+                      disabled: assigneesBusy,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Creado por ${_creatorDisplayName(discussion.createdBy)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ],
                 ),
               ),
               if (messageState.isSending || statusBusy || assigneesBusy)
@@ -421,9 +432,9 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       controller: _contentScrollController,
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
         AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.lg,
       ),
       itemCount: messages.length + (messageState.page.hasNext ? 1 : 0),
       itemBuilder: (context, index) {
@@ -439,7 +450,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                 child: Text(
                   messageState.isLoadingMore
                       ? 'Cargando...'
-                      : 'Cargar mas mensajes',
+                      : 'Cargar más',
                 ),
               ),
             ),
@@ -506,10 +517,10 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
-        margin: EdgeInsets.only(top: showHeader ? AppSpacing.md : AppSpacing.xs),
+        margin: EdgeInsets.only(top: showHeader ? AppSpacing.sm : 2),
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
+          vertical: 2,
         ),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadius.card),
@@ -804,7 +815,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                   AppSpacing.md,
                   AppSpacing.sm,
                   AppSpacing.md,
-                  AppSpacing.md,
+                  AppSpacing.sm,
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -818,8 +829,8 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         SizedBox(
-                          height: 44,
-                          width: 44,
+                          height: 42,
+                          width: 42,
                           child: OutlinedButton(
                             onPressed: blockedByState
                                 ? null
@@ -847,7 +858,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         SizedBox(
-                          height: 44,
+                          height: 42,
                           child: ElevatedButton.icon(
                             onPressed: blockedByState || !canSendText
                                 ? null
@@ -884,16 +895,10 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     final label = _statusLabel(discussion.status);
 
     if (!isDeveloper) {
-      return Row(
-        children: [
-          Text('Canal:', style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(width: AppSpacing.xs),
-          _buildInfoChip(
-            icon: Icons.flag_rounded,
-            text: label,
-            accent: accent,
-          ),
-        ],
+      return _buildInfoChip(
+        icon: Icons.flag_rounded,
+        text: label,
+        accent: accent,
       );
     }
 
@@ -901,16 +906,10 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       return InkWell(
         onTap: disabled ? null : () => _openStatusBottomSheet(discussion),
         borderRadius: BorderRadius.circular(AppRadius.pill),
-        child: Row(
-          children: [
-            Text('Canal:', style: Theme.of(context).textTheme.labelMedium),
-            const SizedBox(width: AppSpacing.xs),
-            _buildInfoChip(
-              icon: Icons.alt_route_rounded,
-              text: label,
-              accent: accent,
-            ),
-          ],
+        child: _buildInfoChip(
+          icon: Icons.alt_route_rounded,
+          text: label,
+          accent: accent,
         ),
       );
     }
@@ -949,8 +948,6 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Canal:', style: Theme.of(context).textTheme.labelMedium),
-          const SizedBox(width: AppSpacing.xs),
           _buildInfoChip(
             icon: Icons.alt_route_rounded,
             text: label,
@@ -958,34 +955,6 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildCreatorSection(Discussion discussion) {
-    final creator = discussion.createdBy;
-    final creatorName = _creatorDisplayName(creator);
-    final accent = Theme.of(context).colorScheme.secondary;
-
-    return Row(
-      children: [
-        Text('Creador:', style: Theme.of(context).textTheme.labelMedium),
-        const SizedBox(width: AppSpacing.xs),
-        Flexible(
-          child: Wrap(
-            spacing: AppSpacing.xs,
-            runSpacing: AppSpacing.xs,
-            children: [
-              _buildPersonPill(
-                name: creatorName,
-                borderColor: accent,
-                avatarBackground: accent.withValues(alpha: 0.18),
-                avatarTextColor: accent,
-                textColor: Theme.of(context).textTheme.labelSmall?.color,
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -2125,7 +2094,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       case DiscussionRecordStatus.newDiscussion:
         return 'Entrada';
       case DiscussionRecordStatus.review:
-        return 'Revision';
+        return 'Revisión';
       case DiscussionRecordStatus.inProgress:
         return 'Trabajando';
       case DiscussionRecordStatus.resolved:
