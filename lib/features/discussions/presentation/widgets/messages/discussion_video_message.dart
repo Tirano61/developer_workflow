@@ -1,7 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../../../core/theme/app_colors.dart';
+import '../../../../../core/theme/app_radius.dart';
+import 'discussion_web_video_surface_stub.dart'
+  if (dart.library.html) 'discussion_web_video_surface_web.dart';
 
 class DiscussionVideoMessage extends StatefulWidget {
   const DiscussionVideoMessage({
@@ -23,10 +27,13 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
   VideoPlayerController? _controller;
   bool _isLoading = true;
   bool _hasError = false;
+  late final String _webViewType;
+  Uri? _resolvedWebPlaybackUri;
 
   @override
   void initState() {
     super.initState();
+    _webViewType = 'dw-discussion-video-${identityHashCode(this)}';
     _initialize();
   }
 
@@ -61,7 +68,8 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
       return;
     }
 
-    final controller = VideoPlayerController.networkUrl(uri);
+    final playbackUri = kIsWeb ? _resolveWebPlaybackUri(uri) : uri;
+    final controller = VideoPlayerController.networkUrl(playbackUri);
 
     try {
       await controller.initialize();
@@ -75,6 +83,7 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
         _controller = controller;
         _isLoading = false;
         _hasError = false;
+        _resolvedWebPlaybackUri = playbackUri;
       });
     } catch (_) {
       controller.dispose();
@@ -97,6 +106,35 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
     await controller.play();
   }
 
+  Uri _resolveWebPlaybackUri(Uri originalUri) {
+    final host = originalUri.host.toLowerCase();
+    final segments = originalUri.pathSegments;
+
+    if (!host.contains('cloudinary.com') || segments.isEmpty) {
+      return originalUri;
+    }
+
+    final uploadIndex = segments.indexOf('upload');
+    if (uploadIndex == -1) {
+      return originalUri;
+    }
+
+    if (uploadIndex + 1 < segments.length) {
+      final nextSegment = segments[uploadIndex + 1];
+      if (nextSegment.contains('f_mp4') || nextSegment.contains('vc_h264')) {
+        return originalUri;
+      }
+    }
+
+    final transformedSegments = <String>[
+      ...segments.sublist(0, uploadIndex + 1),
+      'f_mp4,vc_h264,ac_aac,fl_progressive,q_auto',
+      ...segments.sublist(uploadIndex + 1),
+    ];
+
+    return originalUri.replace(pathSegments: transformedSegments);
+  }
+
   @override
   Widget build(BuildContext context) {
     final caption = widget.caption.trim();
@@ -111,7 +149,7 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: _buildVideoContent(context),
         ),
@@ -149,49 +187,77 @@ class _DiscussionVideoMessageState extends State<DiscussionVideoMessage> {
       valueListenable: controller,
       builder: (context, value, _) {
         final aspectRatio = value.aspectRatio > 0 ? value.aspectRatio : 16 / 9;
+        final videoUri = _resolvedWebPlaybackUri;
+        final viewPort = kIsWeb
+            ? AspectRatio(
+                aspectRatio: aspectRatio,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(AppRadius.card),
+                  ),
+                  child: videoUri == null
+                      ? const SizedBox.shrink()
+                      : buildDiscussionWebVideoSurface(
+                          viewType: _webViewType,
+                          uri: videoUri,
+                        ),
+                ),
+              )
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                child: AspectRatio(
+                  aspectRatio: aspectRatio,
+                  child: GestureDetector(
+                    onTap: () => _togglePlayback(controller),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        VideoPlayer(controller),
+                        if (!value.isPlaying)
+                          const Center(
+                            child: Icon(
+                              Icons.play_circle_fill,
+                              size: 56,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: AspectRatio(
-                aspectRatio: aspectRatio,
-                child: GestureDetector(
-                  onTap: () => _togglePlayback(controller),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      VideoPlayer(controller),
-                      if (!value.isPlaying)
-                        const Center(
-                          child: Icon(
-                            Icons.play_circle_fill,
-                            size: 56,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                    ],
-                  ),
+            viewPort,
+            if (kIsWeb && widget.onOpenExternally != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: widget.onOpenExternally,
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Abrir externamente'),
                 ),
               ),
-            ),
-            Row(
-              children: [
-                IconButton(
-                  tooltip: value.isPlaying ? 'Pausar' : 'Reproducir',
-                  onPressed: () => _togglePlayback(controller),
-                  icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
-                ),
-                Expanded(
-                  child: VideoProgressIndicator(
-                    controller,
-                    allowScrubbing: true,
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+            if (!kIsWeb)
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: value.isPlaying ? 'Pausar' : 'Reproducir',
+                    onPressed: () => _togglePlayback(controller),
+                    icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
                   ),
-                ),
-              ],
-            ),
+                  Expanded(
+                    child: VideoProgressIndicator(
+                      controller,
+                      allowScrubbing: true,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                    ),
+                  ),
+                ],
+              ),
           ],
         );
       },

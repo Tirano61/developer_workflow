@@ -27,6 +27,7 @@ import '../bloc/discussion_bloc.dart';
 import '../bloc/discussion_event.dart';
 import '../bloc/discussion_state.dart';
 import '../widgets/discussion_board_card.dart';
+import 'discussion_detail_page.dart';
 import 'discussion_route_args.dart';
 
 enum _DiscussionViewFilter { all, mine, assignedToMe }
@@ -42,6 +43,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
   _DiscussionViewFilter _viewFilter = _DiscussionViewFilter.all;
   bool _unreadOnly = false;
   DiscussionRecordStatus _mobileStatus = DiscussionRecordStatus.newDiscussion;
+  String? _activeDiscussionId;
 
   DiscussionType? _advancedType;
   Set<String> _applicationFilterIds = <String>{};
@@ -121,6 +123,9 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
 
                 final grouped = _groupByStatus(state.discussions);
                 final mobileItems = _itemsForStatus(grouped, _mobileStatus);
+                final useDetailPanel = _shouldUseDetailPanel(
+                  maxWidth: constraints.maxWidth,
+                );
 
                 return Column(
                   children: [
@@ -144,10 +149,12 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
                       ),
                     Expanded(
                       child: isKanban
-                          ? _buildKanbanBoard(
+                          ? _buildKanbanWithOptionalDetailPanel(
                               grouped: grouped,
                               state: state,
                               isDeveloper: isDeveloper,
+                              useDetailPanel: useDetailPanel,
+                              maxWidth: constraints.maxWidth,
                             )
                           : _buildMobileList(
                               items: mobileItems,
@@ -162,6 +169,65 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildKanbanWithOptionalDetailPanel({
+    required Map<DiscussionRecordStatus, List<Discussion>> grouped,
+    required DiscussionState state,
+    required bool isDeveloper,
+    required bool useDetailPanel,
+    required double maxWidth,
+  }) {
+    if (!useDetailPanel || _activeDiscussionId == null) {
+      return _buildKanbanBoard(
+        grouped: grouped,
+        state: state,
+        isDeveloper: isDeveloper,
+      );
+    }
+
+    final panelWidth = _detailPanelWidth(maxWidth);
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _buildKanbanBoard(
+              grouped: grouped,
+              state: state,
+              isDeveloper: isDeveloper,
+              useOuterPadding: false,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.lg),
+          SizedBox(
+            width: panelWidth,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                border: Border.all(color: Theme.of(context).colorScheme.outline),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppRadius.card),
+                child: DiscussionDetailPage(
+                  key: ValueKey<String>(_activeDiscussionId!),
+                  discussionId: _activeDiscussionId!,
+                  embedded: true,
+                  onClose: () {
+                    setState(() {
+                      _activeDiscussionId = null;
+                    });
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -254,12 +320,11 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     required Map<DiscussionRecordStatus, List<Discussion>> grouped,
     required DiscussionState state,
     required bool isDeveloper,
+    bool useOuterPadding = true,
   }) {
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    final board = Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
           _DwKanbanColumn(
             title: 'Entrada',
             accent: context.semanticColors.statusNew,
@@ -311,7 +376,15 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
             onChangeStatus: _changeDiscussionStatus,
           ),
         ],
-      ),
+    );
+
+    if (!useOuterPadding) {
+      return board;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: board,
     );
   }
 
@@ -639,6 +712,21 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     return MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
   }
 
+  bool _shouldUseDetailPanel({required double maxWidth}) {
+    return maxWidth >= AppBreakpoints.discussionPanel;
+  }
+
+  double _detailPanelWidth(double maxWidth) {
+    final width = maxWidth * 0.36;
+    if (width < 560) {
+      return 560;
+    }
+    if (width > 760) {
+      return 760;
+    }
+    return width;
+  }
+
   bool _isDiscussionBusy(DiscussionState state, String? discussionId) {
     if (discussionId == null || discussionId.isEmpty) {
       return false;
@@ -654,6 +742,13 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     }
 
     context.read<DiscussionBloc>().add(MarkDiscussionAsReadEvent(discussionId));
+
+    if (_shouldUseDetailPanel(maxWidth: MediaQuery.sizeOf(context).width)) {
+      setState(() {
+        _activeDiscussionId = discussionId;
+      });
+      return;
+    }
 
     final changed = await Navigator.pushNamed(
       context,

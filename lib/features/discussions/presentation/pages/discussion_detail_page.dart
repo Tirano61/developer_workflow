@@ -1,11 +1,18 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image/image.dart' as img;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../../core/constants/api_endpoints.dart';
+import '../../../../core/network/network_config.dart';
+import '../../../../core/theme/app_breakpoints.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_radius.dart';
+import '../../../../core/theme/app_spacing.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../discussion_messages/domain/entities/discussion_message.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_bloc.dart';
@@ -15,10 +22,10 @@ import '../../../notifications/presentation/bloc/notification_bloc.dart';
 import '../../../notifications/presentation/bloc/notification_event.dart';
 import '../../../notifications/presentation/bloc/notification_state.dart';
 import '../../domain/entities/discussion.dart';
+import '../../domain/entities/discussion_developer.dart';
 import '../bloc/discussion_bloc.dart';
 import '../bloc/discussion_event.dart';
 import '../bloc/discussion_state.dart';
-import 'discussion_route_args.dart';
 import '../widgets/messages/discussion_audio_message.dart';
 import '../widgets/messages/discussion_file_message.dart';
 import '../widgets/messages/discussion_image_message.dart';
@@ -29,18 +36,20 @@ class DiscussionDetailPage extends StatefulWidget {
   const DiscussionDetailPage({
     required this.discussionId,
     this.embedded = false,
+    this.onClose,
     super.key,
   });
 
   final String discussionId;
   final bool embedded;
+  final VoidCallback? onClose;
 
   @override
   State<DiscussionDetailPage> createState() => _DiscussionDetailPageState();
 }
 
 class _DiscussionDetailPageState extends State<DiscussionDetailPage>
-  with RouteAware {
+    with RouteAware {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _contentScrollController = ScrollController();
 
@@ -50,6 +59,12 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   bool _routeObserverSubscribed = false;
   int _lastKnownMessageCount = 0;
   NotificationBloc? _notificationBloc;
+  String? _hoveredMessageId;
+  _AttachmentOption? _lastAttachmentOption;
+  bool _isCopyableErrorDialogOpen = false;
+
+  static const int _maxWebVideoUploadBytes =
+      120 * 1024 * 1024; // 120 MB para video en web.
 
   @override
   void initState() {
@@ -125,72 +140,49 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   @override
   Widget build(BuildContext context) {
     final content = MultiBlocListener(
-        listeners: [
-          BlocListener<DiscussionBloc, DiscussionState>(
-            listener: _onDiscussionStateChanged,
-          ),
-          BlocListener<DiscussionMessageBloc, DiscussionMessageState>(
-            listener: _onDiscussionMessageStateChanged,
-          ),
-          BlocListener<NotificationBloc, NotificationState>(
-            listenWhen: (previous, current) =>
-                previous.refreshRequestVersion != current.refreshRequestVersion,
-            listener: _onNotificationRefreshRequested,
-          ),
-        ],
-        child: Column(
-          children: [
-            Expanded(
-              child: BlocBuilder<DiscussionBloc, DiscussionState>(
-                builder: (context, discussionState) {
-                  final discussion = _resolveDiscussion(discussionState);
-
-                  return BlocBuilder<
-                    DiscussionMessageBloc,
-                    DiscussionMessageState
-                  >(
-                    builder: (context, messageState) {
-                      if (discussionState.status == DiscussionStatus.loading &&
-                          discussion == null) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      if (discussion == null) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text(
-                                  'No se encontraron datos para la discussion.',
-                                ),
-                                const SizedBox(height: 8),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    _loadDiscussion();
-                                    _loadMessages();
-                                  },
-                                  child: const Text('Reintentar'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-
-                      return _buildDetailContent(
-                        discussion: discussion,
-                        messageState: messageState,
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-            _buildComposer(),
-          ],
+      listeners: [
+        BlocListener<DiscussionBloc, DiscussionState>(
+          listener: _onDiscussionStateChanged,
         ),
+        BlocListener<DiscussionMessageBloc, DiscussionMessageState>(
+          listener: _onDiscussionMessageStateChanged,
+        ),
+        BlocListener<NotificationBloc, NotificationState>(
+          listenWhen: (previous, current) =>
+              previous.refreshRequestVersion != current.refreshRequestVersion,
+          listener: _onNotificationRefreshRequested,
+        ),
+      ],
+      child: Column(
+        children: [
+          Expanded(
+            child: BlocBuilder<DiscussionBloc, DiscussionState>(
+              builder: (context, discussionState) {
+                final discussion = _resolveDiscussion(discussionState);
+
+                return BlocBuilder<DiscussionMessageBloc, DiscussionMessageState>(
+                  builder: (context, messageState) {
+                    if (discussionState.status == DiscussionStatus.loading &&
+                        discussion == null) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (discussion == null) {
+                      return _buildMissingDiscussionState();
+                    }
+
+                    return _buildDetailContent(
+                      discussion: discussion,
+                      messageState: messageState,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          _buildComposer(),
+        ],
+      ),
     );
 
     if (widget.embedded) {
@@ -198,15 +190,870 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Discussion Detail')),
+      appBar: AppBar(
+        title: const Text('Discussion Detail'),
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+      ),
       body: content,
     );
   }
 
-  void _loadDiscussion() {
-    context.read<DiscussionBloc>().add(
-      LoadDiscussionEvent(widget.discussionId),
+  Widget _buildMissingDiscussionState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('No se encontraron datos para la discussion.'),
+            const SizedBox(height: AppSpacing.sm),
+            ElevatedButton(
+              onPressed: () {
+                _loadDiscussion();
+                _loadMessages();
+              },
+              child: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  Widget _buildDetailContent({
+    required Discussion discussion,
+    required DiscussionMessageState messageState,
+  }) {
+    final authState = context.watch<AuthBloc>().state;
+    final currentUser = authState.session?.user;
+    final currentUserId = currentUser?.id;
+    final isDeveloper = currentUser?.isDeveloper ?? false;
+
+    return Column(
+      children: [
+        _buildDiscussionHeader(
+          discussion: discussion,
+          messageState: messageState,
+          isDeveloper: isDeveloper,
+        ),
+        Expanded(
+          child: Stack(
+            children: [
+              _buildConversationList(
+                discussion: discussion,
+                messageState: messageState,
+                currentUserId: currentUserId,
+                isDeveloper: isDeveloper,
+              ),
+              if (messageState.isRefreshing)
+                const Positioned(top: 0, left: 0, right: 0, child: LinearProgressIndicator(minHeight: 2)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDiscussionHeader({
+    required Discussion discussion,
+    required DiscussionMessageState messageState,
+    required bool isDeveloper,
+  }) {
+    final statusBusy = _isStatusBusy(discussion.id);
+    final assigneesBusy = _isAssignmentsBusy(discussion.id);
+    final compact = _isCompactLayout(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).colorScheme.outline),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTypeChip(discussion.type),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _buildStatusControl(
+                  discussion: discussion,
+                  isDeveloper: isDeveloper,
+                  disabled: statusBusy || messageState.isSending,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                _formatShortDateTime(discussion.updatedAt ?? discussion.createdAt),
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              if (widget.embedded) ...[
+                const SizedBox(width: AppSpacing.xs),
+                IconButton(
+                  tooltip: 'Cerrar panel',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: widget.onClose,
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _buildCreatorSection(discussion),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            _normalizedTitle(discussion.title),
+            maxLines: compact ? 3 : 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: [
+              ..._buildContextChips(
+                label: 'Aplicacion',
+                values: _extractApplicationLabels(discussion),
+              ),
+              ..._buildContextChips(
+                label: 'Indicador',
+                values: _extractIndicatorLabels(discussion),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Expanded(
+                child: _buildAssigneeSection(
+                  discussion: discussion,
+                  isDeveloper: isDeveloper,
+                  disabled: assigneesBusy,
+                ),
+              ),
+              if (messageState.isSending || statusBusy || assigneesBusy)
+                const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConversationList({
+    required Discussion discussion,
+    required DiscussionMessageState messageState,
+    required String? currentUserId,
+    required bool isDeveloper,
+  }) {
+    if (messageState.status == DiscussionMessageStatus.loading &&
+        messageState.messages.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final messages = messageState.messages;
+    if (messages.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Center(
+          child: Text(
+            'No hay mensajes en esta discussion todavia.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _contentScrollController,
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
+      itemCount: messages.length + (messageState.page.hasNext ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (messageState.page.hasNext && index == messages.length) {
+          return Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.md),
+            child: Align(
+              alignment: Alignment.center,
+              child: OutlinedButton(
+                onPressed: messageState.isLoadingMore
+                    ? null
+                    : () => _loadMoreMessages(messageState),
+                child: Text(
+                  messageState.isLoadingMore
+                      ? 'Cargando...'
+                      : 'Cargar mas mensajes',
+                ),
+              ),
+            ),
+          );
+        }
+
+        final message = messages[index];
+        final previous = index > 0 ? messages[index - 1] : null;
+        final isGrouped = _isConsecutiveMessage(previous, message);
+        final isOwnMessage =
+            currentUserId != null && message.author.id == currentUserId;
+        final canEditMessage = isOwnMessage || isDeveloper;
+        final isUpdatingThisMessage =
+            messageState.isUpdating && messageState.updatingMessageId == message.id;
+
+        return _buildMessageItem(
+          message: message,
+          isGrouped: isGrouped,
+          canEditMessage: canEditMessage,
+          isUpdatingThisMessage: isUpdatingThisMessage,
+        );
+      },
+    );
+  }
+
+  Widget _buildMessageItem({
+    required DiscussionMessage message,
+    required bool isGrouped,
+    required bool canEditMessage,
+    required bool isUpdatingThisMessage,
+  }) {
+    final showAvatar = !isGrouped;
+    final showHeader = !isGrouped;
+    final isHovered = _hoveredMessageId == message.id;
+
+    return MouseRegion(
+      onEnter: (_) {
+        if (!kIsWeb) {
+          return;
+        }
+        setState(() {
+          _hoveredMessageId = message.id;
+        });
+      },
+      onExit: (_) {
+        if (!kIsWeb) {
+          return;
+        }
+        setState(() {
+          if (_hoveredMessageId == message.id) {
+            _hoveredMessageId = null;
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        margin: EdgeInsets.only(top: showHeader ? AppSpacing.md : AppSpacing.xs),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          color: isHovered && kIsWeb
+              ? Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withValues(alpha: 0.34)
+              : Colors.transparent,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 34,
+              child: showAvatar
+                  ? CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      child: Text(
+                        _initials(message.author.displayName),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (showHeader)
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            message.author.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Text(
+                          _formatShortDateTime(message.createdAt),
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                        const Spacer(),
+                        if (canEditMessage)
+                          IconButton(
+                            iconSize: 17,
+                            visualDensity: VisualDensity.compact,
+                            icon: const Icon(Icons.edit_outlined),
+                            tooltip: 'Editar mensaje',
+                            onPressed: isUpdatingThisMessage
+                                ? null
+                                : () => _editMessage(message),
+                          ),
+                      ],
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 120),
+                        opacity: isHovered && kIsWeb ? 1 : 0,
+                        child: Text(
+                          _formatShortDateTime(message.createdAt),
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                      ),
+                    ),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: _buildMessageBody(message),
+                  ),
+                  if (isUpdatingThisMessage) ...[
+                    const SizedBox(height: AppSpacing.xs),
+                    const LinearProgressIndicator(minHeight: 2),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageBody(DiscussionMessage message) {
+    switch (message.type) {
+      case DiscussionMessageType.text:
+        return DiscussionTextMessage(content: message.content);
+      case DiscussionMessageType.image:
+        return DiscussionImageMessage(
+          fileUrl: message.attachmentUrl,
+          caption: message.content,
+        );
+      case DiscussionMessageType.audio:
+        return DiscussionAudioMessage(
+          fileUrl: message.attachmentUrl,
+          caption: message.content,
+          onOpenExternally: () => _openAttachmentUrl(message.attachmentUrl),
+        );
+      case DiscussionMessageType.video:
+        return DiscussionVideoMessage(
+          fileUrl: message.attachmentUrl,
+          caption: message.content,
+          onOpenExternally: () => _openAttachmentUrl(message.attachmentUrl),
+        );
+      case DiscussionMessageType.file:
+      case DiscussionMessageType.unknown:
+        return DiscussionFileMessage(
+          message: message,
+          onOpen: () =>
+              _openAttachmentUrl(message.attachmentUrl, preferDownload: kIsWeb),
+        );
+    }
+  }
+
+  Widget _buildComposer() {
+    return BlocBuilder<DiscussionBloc, DiscussionState>(
+      builder: (context, discussionState) {
+        final hasDiscussion = _resolveDiscussion(discussionState) != null;
+
+        return BlocBuilder<DiscussionMessageBloc, DiscussionMessageState>(
+          builder: (context, messageState) {
+            final messageText = _messageController.text.trim();
+            final canSendText = messageText.isNotEmpty;
+            final blockedByState =
+                !hasDiscussion ||
+                messageState.isSending ||
+                (messageState.status == DiscussionMessageStatus.loading &&
+                    messageState.messages.isEmpty);
+
+            return SafeArea(
+              top: false,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(color: Theme.of(context).colorScheme.outline),
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.sm,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_pendingAttachmentUpload && messageState.isSending)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: LinearProgressIndicator(minHeight: 2),
+                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        SizedBox(
+                          height: 44,
+                          width: 44,
+                          child: OutlinedButton(
+                            onPressed: blockedByState
+                                ? null
+                                : _openAttachmentOptions,
+                            child: const Icon(Icons.add_rounded),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            minLines: 1,
+                            maxLines: 5,
+                            textInputAction: TextInputAction.send,
+                            onChanged: (_) => setState(() {}),
+                            onSubmitted: (_) {
+                              if (!blockedByState && canSendText) {
+                                _sendMessage();
+                              }
+                            },
+                            decoration: const InputDecoration(
+                              hintText: 'Escribir un mensaje...',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        SizedBox(
+                          height: 44,
+                          child: ElevatedButton.icon(
+                            onPressed: blockedByState || !canSendText
+                                ? null
+                                : _sendMessage,
+                            icon: messageState.isSending
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.send_rounded),
+                            label: const Text('Enviar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusControl({
+    required Discussion discussion,
+    required bool isDeveloper,
+    required bool disabled,
+  }) {
+    final semantic = context.semanticColors;
+    final accent = _statusAccent(discussion.status, semantic);
+    final label = _statusLabel(discussion.status);
+
+    if (!isDeveloper) {
+      return Row(
+        children: [
+          Text('Canal:', style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(width: AppSpacing.xs),
+          _buildInfoChip(
+            icon: Icons.flag_rounded,
+            text: label,
+            accent: accent,
+          ),
+        ],
+      );
+    }
+
+    if (_isCompactLayout(context)) {
+      return InkWell(
+        onTap: disabled ? null : () => _openStatusBottomSheet(discussion),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        child: Row(
+          children: [
+            Text('Canal:', style: Theme.of(context).textTheme.labelMedium),
+            const SizedBox(width: AppSpacing.xs),
+            _buildInfoChip(
+              icon: Icons.alt_route_rounded,
+              text: label,
+              accent: accent,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return PopupMenuButton<DiscussionRecordStatus>(
+      enabled: !disabled,
+      tooltip: 'Cambiar estado',
+      itemBuilder: (context) {
+        return DiscussionRecordStatus.values
+            .where((status) => status != DiscussionRecordStatus.unknown)
+            .map(
+              (status) => PopupMenuItem<DiscussionRecordStatus>(
+                value: status,
+                child: Row(
+                  children: [
+                    Icon(
+                      status == discussion.status
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      size: 16,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(_statusLabel(status)),
+                  ],
+                ),
+              ),
+            )
+            .toList(growable: false);
+      },
+      onSelected: (status) {
+        if (status == discussion.status) {
+          return;
+        }
+        _changeDiscussionStatus(discussion, status);
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Canal:', style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(width: AppSpacing.xs),
+          _buildInfoChip(
+            icon: Icons.alt_route_rounded,
+            text: label,
+            accent: accent,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreatorSection(Discussion discussion) {
+    final creator = discussion.createdBy;
+    final creatorName = _creatorDisplayName(creator);
+    final accent = Theme.of(context).colorScheme.secondary;
+
+    return Row(
+      children: [
+        Text('Creador:', style: Theme.of(context).textTheme.labelMedium),
+        const SizedBox(width: AppSpacing.xs),
+        Flexible(
+          child: Wrap(
+            spacing: AppSpacing.xs,
+            runSpacing: AppSpacing.xs,
+            children: [
+              _buildPersonPill(
+                name: creatorName,
+                borderColor: accent,
+                avatarBackground: accent.withValues(alpha: 0.18),
+                avatarTextColor: accent,
+                textColor: Theme.of(context).textTheme.labelSmall?.color,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _openStatusBottomSheet(Discussion discussion) async {
+    final selected = await showModalBottomSheet<DiscussionRecordStatus>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: AppSpacing.sm),
+              Text('Cambiar estado', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: AppSpacing.xs),
+              for (final status in DiscussionRecordStatus.values.where(
+                (status) => status != DiscussionRecordStatus.unknown,
+              ))
+                ListTile(
+                  title: Text(_statusLabel(status)),
+                  trailing: status == discussion.status
+                      ? const Icon(Icons.check_rounded)
+                      : null,
+                  onTap: () => Navigator.pop(sheetContext, status),
+                ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || selected == null || selected == discussion.status) {
+      return;
+    }
+
+    _changeDiscussionStatus(discussion, selected);
+  }
+
+  Widget _buildAssigneeSection({
+    required Discussion discussion,
+    required bool isDeveloper,
+    required bool disabled,
+  }) {
+    return InkWell(
+      onTap: isDeveloper && !disabled ? () => _openAssignmentsDialog(discussion) : null,
+      borderRadius: BorderRadius.circular(AppRadius.pill),
+      child: Row(
+        children: [
+          const Icon(Icons.groups_2_outlined, size: 16),
+          const SizedBox(width: AppSpacing.xs),
+          if (discussion.assignedDevelopers.isEmpty)
+            Text(
+              'Sin asignar',
+              style: Theme.of(context).textTheme.labelMedium,
+            )
+          else
+            Flexible(
+              child: Wrap(
+                spacing: AppSpacing.xs,
+                runSpacing: AppSpacing.xs,
+                children: _buildAssigneeChips(discussion.assignedDevelopers),
+              ),
+            ),
+          if (isDeveloper) ...[
+            const SizedBox(width: AppSpacing.xs),
+            Icon(
+              _isCompactLayout(context)
+                  ? Icons.keyboard_arrow_up_rounded
+                  : Icons.edit_outlined,
+              size: 16,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildAssigneeChips(List<DiscussionAssignedDeveloper> assignees) {
+    const visibleCount = 4;
+    final visible = assignees.take(visibleCount).toList(growable: false);
+    final overflow = assignees.length - visible.length;
+
+    final chips = <Widget>[];
+    for (final assignee in visible) {
+      chips.add(
+        Tooltip(
+          message: assignee.fullName,
+          child: _buildPersonPill(
+            name: assignee.fullName,
+            borderColor: Theme.of(context).colorScheme.outline,
+            avatarBackground: Theme.of(context).colorScheme.surfaceContainerHighest,
+            avatarTextColor: Theme.of(context).textTheme.labelSmall?.color,
+            textColor: Theme.of(context).textTheme.labelSmall?.color,
+          ),
+        ),
+      );
+    }
+
+    if (overflow > 0) {
+      chips.add(
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 3,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadius.pill),
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+          ),
+          child: Text('+$overflow', style: Theme.of(context).textTheme.labelSmall),
+        ),
+      );
+    }
+
+    return chips;
+  }
+
+  Widget _buildPersonPill({
+    required String name,
+    required Color borderColor,
+    required Color? avatarBackground,
+    required Color? avatarTextColor,
+    required Color? textColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xs,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 9,
+            backgroundColor: avatarBackground,
+            child: Text(
+              _initials(name),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: avatarTextColor,
+                  ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            name,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: textColor,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTypeChip(DiscussionType type) {
+    final semantic = context.semanticColors;
+    final (label, accent) = switch (type) {
+      DiscussionType.error => ('ERROR', semantic.discussionError),
+      DiscussionType.idea => ('IDEA', semantic.discussionIdea),
+      DiscussionType.improvement => ('MEJORA', semantic.discussionImprovement),
+      DiscussionType.question => ('CONSULTA', semantic.discussionQuestion),
+      DiscussionType.unknown => ('OTRO', Theme.of(context).colorScheme.outline),
+    };
+
+    return _buildInfoChip(
+      icon: Icons.sell_outlined,
+      text: label,
+      accent: accent,
+    );
+  }
+
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String text,
+    required Color accent,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        border: Border.all(color: accent),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: accent),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            text,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildContextChips({
+    required String label,
+    required List<String> values,
+  }) {
+    if (values.isEmpty) {
+      return [
+        Chip(
+          visualDensity: VisualDensity.compact,
+          label: Text('$label: -'),
+        ),
+      ];
+    }
+
+    const visibleCount = 3;
+    final visible = values.take(visibleCount).toList(growable: false);
+    final overflow = values.length - visible.length;
+
+    final result = <Widget>[];
+    for (final value in visible) {
+      result.add(
+        Chip(
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          label: Text(
+            '$label: $value',
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
+    }
+
+    if (overflow > 0) {
+      result.add(
+        Chip(
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          label: Text('+$overflow'),
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  void _loadDiscussion() {
+    context.read<DiscussionBloc>().add(LoadDiscussionEvent(widget.discussionId));
   }
 
   void _setActiveDiscussionId(String discussionId) {
@@ -248,9 +1095,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     }
 
     _markAsReadRequestedForDiscussionId = widget.discussionId;
-    context.read<DiscussionBloc>().add(
-      MarkDiscussionAsReadEvent(widget.discussionId),
-    );
+    context.read<DiscussionBloc>().add(MarkDiscussionAsReadEvent(widget.discussionId));
   }
 
   void _loadMessages({int page = 1}) {
@@ -266,8 +1111,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   void _refreshDiscussionAndMessages() {
     _loadDiscussion();
     debugPrint(
-      '[DISCUSSION] refresh dispatched - ${_timestampNow()} - '
-      'discussionId=${widget.discussionId}',
+      '[DISCUSSION] refresh dispatched - ${_timestampNow()} - discussionId=${widget.discussionId}',
     );
     context.read<DiscussionMessageBloc>().add(
       RefreshDiscussionMessagesEvent(
@@ -293,7 +1137,6 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   void _sendMessage() {
     final content = _messageController.text.trim();
     if (content.isEmpty) {
-      _showMessage('Escribe un mensaje antes de enviar.');
       return;
     }
 
@@ -307,184 +1150,151 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     );
   }
 
-  Future<void> _pickAndSendAttachment() async {
-    debugPrint(
-      '[ATTACHMENT] button pressed '
-      'discussionId=${widget.discussionId} web=$kIsWeb',
+  Future<void> _openAttachmentOptions() async {
+    final compactLayout = _isCompactLayout(context);
+    final selectedOption = compactLayout
+        ? await _showAttachmentOptionsBottomSheet()
+        : await _showAttachmentOptionsMenu();
+
+    if (!mounted || selectedOption == null) {
+      return;
+    }
+
+    await _pickAndSendAttachment(selectedOption);
+  }
+
+  Future<_AttachmentOption?> _showAttachmentOptionsBottomSheet() {
+    return showModalBottomSheet<_AttachmentOption>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: AppSpacing.sm),
+              Text('Adjuntar', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: AppSpacing.xs),
+              ..._AttachmentOption.values.map(
+                (option) => ListTile(
+                  leading: Icon(option.icon),
+                  title: Text(option.label),
+                  onTap: () => Navigator.pop(sheetContext, option),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<_AttachmentOption?> _showAttachmentOptionsMenu() async {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) {
+      return null;
+    }
+
+    final position = RelativeRect.fromLTRB(
+      box.size.width - 220,
+      box.size.height - 140,
+      12,
+      12,
     );
 
-    try {
-      if (kIsWeb) {
-        debugPrint('[ATTACHMENT] web picker opening');
-      }
+    return showMenu<_AttachmentOption>(
+      context: context,
+      position: position,
+      items: [
+        for (final option in _AttachmentOption.values)
+          PopupMenuItem<_AttachmentOption>(
+            value: option,
+            child: Row(
+              children: [
+                Icon(option.icon, size: 18),
+                const SizedBox(width: AppSpacing.sm),
+                Text(option.label),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 
+  Future<void> _pickAndSendAttachment(_AttachmentOption option) async {
+    try {
       final selection = await FilePicker.platform.pickFiles(
-        type: FileType.any,
+        type: option.filePickerType,
         allowMultiple: false,
         withData: true,
+        allowedExtensions: option.allowedExtensions,
       );
 
       if (!mounted || selection == null || selection.files.isEmpty) {
-        debugPrint('[ATTACHMENT] picker canceled or empty selection');
         return;
       }
 
       final picked = selection.files.first;
       final bytes = picked.bytes;
       final rawName = picked.name.trim();
-      final fileName = rawName.isNotEmpty ? rawName : 'attachment';
-      final inferredMimeType = _inferMimeTypeFromFileName(fileName);
+      final originalFileName = rawName.isNotEmpty ? rawName : 'attachment';
+      final optionalContent = _messageController.text.trim();
 
       if (bytes == null || bytes.isEmpty) {
         _showMessage('No se pudo leer el archivo seleccionado.');
         return;
       }
 
-      final type = _inferAttachmentType(
-        fileName: fileName,
-        mimeType: inferredMimeType,
-      );
-      final optionalContent = _messageController.text.trim();
+      var uploadFileName = originalFileName;
+      var uploadBytes = bytes;
 
-      debugPrint(
-        '[ATTACHMENT] file selected '
-        'name=$fileName mime=${inferredMimeType ?? '-'} size=${bytes.length}',
-      );
-      debugPrint('[ATTACHMENT] upload started');
+      if (option == _AttachmentOption.image) {
+        final optimized = _optimizeImageForUpload(
+          originalBytes: bytes,
+          originalFileName: originalFileName,
+        );
+        uploadFileName = optimized.fileName;
+        uploadBytes = optimized.bytes;
+
+        if (optimized.wasOptimized && mounted) {
+          final originalKb = (bytes.length / 1024).round();
+          final optimizedKb = (uploadBytes.length / 1024).round();
+          _showMessage('Imagen optimizada: $originalKb KB -> $optimizedKb KB');
+        }
+      }
+
+      if (kIsWeb &&
+          option == _AttachmentOption.video &&
+          uploadBytes.length > _maxWebVideoUploadBytes) {
+        final sizeMb = (uploadBytes.length / (1024 * 1024)).toStringAsFixed(1);
+        _showMessage(
+          'Video demasiado grande para carga web directa ($sizeMb MB). '
+          'Prueba con un video mas liviano o comprime el archivo.',
+        );
+        return;
+      }
 
       _pendingComposerClear = true;
       _pendingAttachmentUpload = true;
+      _lastAttachmentOption = option;
       context.read<DiscussionMessageBloc>().add(
         CreateDiscussionAttachmentMessageEvent(
           discussionId: widget.discussionId,
-          type: type,
-          fileName: fileName,
-          fileBytes: bytes,
+          type: option.type,
+          fileName: uploadFileName,
+          fileBytes: uploadBytes,
           content: optionalContent.isEmpty ? null : optionalContent,
         ),
       );
-    } on PlatformException catch (error) {
-      debugPrint('[ATTACHMENT] picker error: $error');
+    } on PlatformException {
       if (mounted) {
         _showMessage('No se pudo abrir el selector de archivos.');
       }
-    } catch (error) {
-      debugPrint('[ATTACHMENT] unexpected picker error: $error');
+    } catch (_) {
       if (mounted) {
         _showMessage('Ocurrio un error al adjuntar el archivo.');
       }
     }
-  }
-
-  DiscussionMessageType _inferAttachmentType({
-    required String fileName,
-    String? mimeType,
-  }) {
-    final normalizedMime = mimeType?.trim().toLowerCase() ?? '';
-    if (normalizedMime.startsWith('image/')) {
-      return DiscussionMessageType.image;
-    }
-    if (normalizedMime.startsWith('audio/')) {
-      return DiscussionMessageType.audio;
-    }
-    if (normalizedMime.startsWith('video/')) {
-      return DiscussionMessageType.video;
-    }
-
-    final dotIndex = fileName.lastIndexOf('.');
-    final extension = dotIndex < 0
-        ? ''
-        : fileName.substring(dotIndex + 1).toLowerCase();
-
-    const imageExtensions = <String>{
-      'png',
-      'jpg',
-      'jpeg',
-      'gif',
-      'webp',
-      'bmp',
-      'heic',
-      'heif',
-      'svg',
-    };
-
-    const audioExtensions = <String>{
-      'mp3',
-      'wav',
-      'm4a',
-      'aac',
-      'ogg',
-      'opus',
-      'flac',
-      'amr',
-    };
-
-    const videoExtensions = <String>{
-      'mp4',
-      'mov',
-      'avi',
-      'mkv',
-      'webm',
-      'm4v',
-      '3gp',
-    };
-
-    if (imageExtensions.contains(extension)) {
-      return DiscussionMessageType.image;
-    }
-
-    if (audioExtensions.contains(extension)) {
-      return DiscussionMessageType.audio;
-    }
-
-    if (videoExtensions.contains(extension)) {
-      return DiscussionMessageType.video;
-    }
-
-    return DiscussionMessageType.file;
-  }
-
-  String? _inferMimeTypeFromFileName(String fileName) {
-    final dotIndex = fileName.lastIndexOf('.');
-    if (dotIndex < 0 || dotIndex == fileName.length - 1) {
-      return null;
-    }
-
-    final extension = fileName.substring(dotIndex + 1).trim().toLowerCase();
-    if (extension.isEmpty) {
-      return null;
-    }
-
-    const mimeByExtension = <String, String>{
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp',
-      'bmp': 'image/bmp',
-      'heic': 'image/heic',
-      'heif': 'image/heif',
-      'svg': 'image/svg+xml',
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'm4a': 'audio/mp4',
-      'aac': 'audio/aac',
-      'ogg': 'audio/ogg',
-      'opus': 'audio/opus',
-      'flac': 'audio/flac',
-      'amr': 'audio/amr',
-      'mp4': 'video/mp4',
-      'mov': 'video/quicktime',
-      'avi': 'video/x-msvideo',
-      'mkv': 'video/x-matroska',
-      'webm': 'video/webm',
-      'm4v': 'video/x-m4v',
-      '3gp': 'video/3gpp',
-      'pdf': 'application/pdf',
-      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    };
-
-    return mimeByExtension[extension] ?? 'application/octet-stream';
   }
 
   Future<void> _editMessage(DiscussionMessage message) async {
@@ -501,7 +1311,6 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
             maxLines: 6,
             decoration: const InputDecoration(
               labelText: 'Contenido',
-              border: OutlineInputBorder(),
             ),
           ),
           actions: [
@@ -538,29 +1347,47 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     DiscussionMessageState state,
   ) {
     final hasNewMessages = state.messages.length > _lastKnownMessageCount;
-    final shouldAutoScrollForIncoming =
-        hasNewMessages && _isNearBottomBeforeUpdate();
+    final shouldAutoScrollForIncoming = hasNewMessages && _isNearBottomBeforeUpdate();
     _lastKnownMessageCount = state.messages.length;
 
     if (state.status == DiscussionMessageStatus.error &&
         state.errorMessage.isNotEmpty) {
-      if (_pendingAttachmentUpload) {
-        debugPrint('[ATTACHMENT] upload failed');
-      }
       _pendingAttachmentUpload = false;
       _pendingComposerClear = false;
-      _showMessage(state.errorMessage);
+
+      final isWebVideoUploadFailure =
+          kIsWeb &&
+          _lastAttachmentOption == _AttachmentOption.video &&
+          state.errorMessage.toLowerCase().contains('failed to fetch');
+
+      if (isWebVideoUploadFailure) {
+        final fullMessage =
+          '${state.errorMessage}\n\n'
+          'Tip tecnico: este error suele aparecer cuando el backend bloquea '
+          'CORS en POST/OPTIONS de /messages/files o cuando el gateway rechaza '
+          'el tamaño del video sin devolver cabeceras CORS.\n\n'
+          '${_buildWebUploadDiagnosticBlock()}';
+
+        _showCopyableErrorDialog(fullMessage);
+      } else {
+        if (kIsWeb && _pendingAttachmentUpload) {
+          _showCopyableErrorDialog(
+            '${state.errorMessage}\n\n${_buildWebUploadDiagnosticBlock()}',
+          );
+        } else {
+          _showMessage(state.errorMessage);
+        }
+      }
+      _lastAttachmentOption = null;
       return;
     }
 
     if (_pendingComposerClear &&
         !state.isSending &&
         state.status == DiscussionMessageStatus.success) {
-      if (_pendingAttachmentUpload) {
-        debugPrint('[ATTACHMENT] upload completed');
-      }
       _pendingAttachmentUpload = false;
       _pendingComposerClear = false;
+      _lastAttachmentOption = null;
       _messageController.clear();
       _scheduleScrollToBottom();
       return;
@@ -580,6 +1407,25 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     return (position.maxScrollExtent - position.pixels) <= 120;
   }
 
+  bool _isConsecutiveMessage(DiscussionMessage? previous, DiscussionMessage current) {
+    if (previous == null) {
+      return false;
+    }
+
+    if (previous.author.id != current.author.id) {
+      return false;
+    }
+
+    final previousCreatedAt = previous.createdAt;
+    final currentCreatedAt = current.createdAt;
+    if (previousCreatedAt == null || currentCreatedAt == null) {
+      return true;
+    }
+
+    final diffMinutes = currentCreatedAt.difference(previousCreatedAt).inMinutes;
+    return diffMinutes >= 0 && diffMinutes <= 7;
+  }
+
   void _scheduleScrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_contentScrollController.hasClients) {
@@ -592,348 +1438,6 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
         curve: Curves.easeOut,
       );
     });
-  }
-
-  Widget _buildDetailContent({
-    required Discussion discussion,
-    required DiscussionMessageState messageState,
-  }) {
-    final authState = context.watch<AuthBloc>().state;
-    final currentUser = authState.session?.user;
-    final currentUserId = currentUser?.id;
-    final isDeveloper = currentUser?.isDeveloper ?? false;
-
-    return ListView(
-      controller: _contentScrollController,
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _detailRow('ID', discussion.id ?? '-'),
-                _detailRow('Title', discussion.title),
-                _detailRow('Type', discussion.type.apiValue),
-                _detailRow('Status', _statusLabel(discussion.status)),
-                _detailRow('Created by', _formatCreator(discussion.createdBy)),
-                _detailRow('Created at', _formatDate(discussion.createdAt)),
-                _detailRow('Updated at', _formatDate(discussion.updatedAt)),
-                const SizedBox(height: 12),
-                _buildStatusSection(
-                  discussion: discussion,
-                  isDeveloper: isDeveloper,
-                  messageState: messageState,
-                ),
-                const SizedBox(height: 12),
-                _buildAssignmentsSection(
-                  discussion: discussion,
-                  isDeveloper: isDeveloper,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _buildTagSection(
-          title: 'Applications',
-          values: _extractApplicationLabels(discussion),
-        ),
-        const SizedBox(height: 8),
-        _buildTagSection(
-          title: 'Indicators',
-          values: _extractIndicatorLabels(discussion),
-        ),
-        const SizedBox(height: 8),
-        _buildTagSection(title: 'Tags', values: _extractTagLabels(discussion)),
-        const SizedBox(height: 16),
-        const Divider(),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Conversacion (${messageState.messages.length})',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            if (messageState.status == DiscussionMessageStatus.loading ||
-              messageState.isRefreshing ||
-                messageState.isSending ||
-                messageState.isUpdating)
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (messageState.status == DiscussionMessageStatus.loading &&
-            messageState.messages.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (messageState.messages.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text('No hay mensajes en esta discussion todavia.'),
-          )
-        else
-          ...messageState.messages.map((message) {
-            final isOwnMessage =
-                currentUserId != null && message.author.id == currentUserId;
-            final canEditMessage = isOwnMessage || isDeveloper;
-            final isUpdatingThisMessage =
-                messageState.isUpdating &&
-                messageState.updatingMessageId == message.id;
-
-            return _buildMessageTile(
-              message: message,
-              isOwnMessage: isOwnMessage,
-              canEditMessage: canEditMessage,
-              isUpdatingThisMessage: isUpdatingThisMessage,
-            );
-          }),
-        const SizedBox(height: 12),
-        if (messageState.page.hasNext)
-          Align(
-            alignment: Alignment.center,
-            child: OutlinedButton(
-              onPressed: messageState.isLoadingMore
-                  ? null
-                  : () => _loadMoreMessages(messageState),
-              child: Text(
-                messageState.isLoadingMore
-                    ? 'Cargando...'
-                    : 'Cargar mas mensajes',
-              ),
-            ),
-          ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            ElevatedButton(
-              onPressed: () {
-                _loadDiscussion();
-                _loadMessages(page: 1);
-              },
-              child: const Text('Recargar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final changed = await Navigator.pushNamed(
-                  context,
-                  AppRoutes.discussionCreate,
-                  arguments: DiscussionEditorRouteArgs(
-                    discussion: discussion,
-                    discussionId: discussion.id,
-                  ),
-                );
-
-                if (!mounted) {
-                  return;
-                }
-
-                if (changed == true) {
-                  _loadDiscussion();
-                  _loadMessages(page: 1);
-                }
-              },
-              child: const Text('Editar'),
-            ),
-            if (!widget.embedded)
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Volver'),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
-
-  Widget _buildStatusSection({
-    required Discussion discussion,
-    required bool isDeveloper,
-    required DiscussionMessageState messageState,
-  }) {
-    final discussionState = context.watch<DiscussionBloc>().state;
-    final isBusy = discussionState.isUpdatingStatus &&
-        discussionState.operationDiscussionId == discussion.id;
-
-    if (!isDeveloper) {
-      return Text('Estado actual: ${_statusLabel(discussion.status)}');
-    }
-
-    return DropdownButtonFormField<DiscussionRecordStatus>(
-      initialValue: discussion.status,
-      decoration: const InputDecoration(
-        labelText: 'Estado',
-        border: OutlineInputBorder(),
-      ),
-      items: DiscussionRecordStatus.values
-          .where((status) => status != DiscussionRecordStatus.unknown)
-          .map(
-            (status) => DropdownMenuItem<DiscussionRecordStatus>(
-              value: status,
-              child: Text(_statusLabel(status)),
-            ),
-          )
-          .toList(growable: false),
-      onChanged: isBusy || messageState.isSending
-          ? null
-          : (status) {
-              final discussionId = discussion.id;
-              if (status == null || discussionId == null || discussionId.isEmpty) {
-                return;
-              }
-
-              if (status == discussion.status) {
-                return;
-              }
-
-              context.read<DiscussionBloc>().add(
-                ChangeDiscussionStatusEvent(
-                  discussionId: discussionId,
-                  status: status,
-                ),
-              );
-            },
-    );
-  }
-
-  Widget _buildAssignmentsSection({
-    required Discussion discussion,
-    required bool isDeveloper,
-  }) {
-    final discussionState = context.watch<DiscussionBloc>().state;
-    final isBusy = discussionState.isUpdatingAssignments &&
-        discussionState.operationDiscussionId == discussion.id;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Asignados', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 8),
-        if (discussion.assignedDevelopers.isEmpty)
-          const Text('Sin asignar')
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: discussion.assignedDevelopers
-                .map((developer) => Chip(label: Text(developer.fullName)))
-                .toList(growable: false),
-          ),
-        const SizedBox(height: 8),
-        if (isDeveloper)
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton(
-                onPressed: isBusy ? null : () => _openAssignmentsDialog(discussion),
-                child: const Text('Asignar developers'),
-              ),
-              OutlinedButton(
-                onPressed: isBusy ? null : () => _assignToMe(discussion),
-                child: const Text('Asignarme'),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
-
-  Widget _buildMessageTile({
-    required DiscussionMessage message,
-    required bool isOwnMessage,
-    required bool canEditMessage,
-    required bool isUpdatingThisMessage,
-  }) {
-    final bubbleColor = isOwnMessage
-        ? Theme.of(context).colorScheme.primaryContainer
-        : Theme.of(context).colorScheme.surfaceContainerHighest;
-
-    return Align(
-      alignment: isOwnMessage ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 680),
-        child: Card(
-          color: bubbleColor,
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${message.author.displayName} · ${_formatDate(message.createdAt)}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                    if (canEditMessage)
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        tooltip: 'Editar mensaje',
-                        onPressed: isUpdatingThisMessage
-                            ? null
-                            : () => _editMessage(message),
-                      ),
-                  ],
-                ),
-                _buildMessageBody(message),
-                if (isUpdatingThisMessage) ...[
-                  const SizedBox(height: 8),
-                  const LinearProgressIndicator(),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMessageBody(DiscussionMessage message) {
-    switch (message.type) {
-      case DiscussionMessageType.text:
-        return DiscussionTextMessage(content: message.content);
-      case DiscussionMessageType.image:
-        return DiscussionImageMessage(
-          fileUrl: message.attachmentUrl,
-          caption: message.content,
-        );
-      case DiscussionMessageType.audio:
-        return DiscussionAudioMessage(
-          fileUrl: message.attachmentUrl,
-          caption: message.content,
-          onOpenExternally: () => _openAttachmentUrl(message.attachmentUrl),
-        );
-      case DiscussionMessageType.video:
-        return DiscussionVideoMessage(
-          fileUrl: message.attachmentUrl,
-          caption: message.content,
-          onOpenExternally: () => _openAttachmentUrl(message.attachmentUrl),
-        );
-      case DiscussionMessageType.file:
-      case DiscussionMessageType.unknown:
-        return DiscussionFileMessage(
-          message: message,
-          onOpen: () =>
-              _openAttachmentUrl(message.attachmentUrl, preferDownload: kIsWeb),
-        );
-    }
   }
 
   Future<void> _openAttachmentUrl(
@@ -952,9 +1456,8 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       return;
     }
 
-    final launchMode = kIsWeb
-        ? LaunchMode.platformDefault
-        : LaunchMode.externalApplication;
+    final launchMode =
+        kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication;
     final launched = await launchUrl(
       uri,
       mode: launchMode,
@@ -964,78 +1467,6 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     if (!launched) {
       _showMessage('No se pudo abrir el archivo.');
     }
-  }
-
-  Widget _buildComposer() {
-    return BlocBuilder<DiscussionBloc, DiscussionState>(
-      builder: (context, discussionState) {
-        final hasDiscussion = _resolveDiscussion(discussionState) != null;
-
-        return BlocBuilder<DiscussionMessageBloc, DiscussionMessageState>(
-          builder: (context, messageState) {
-            final isDisabled =
-                !hasDiscussion ||
-                messageState.isSending ||
-                (messageState.status == DiscussionMessageStatus.loading &&
-                    messageState.messages.isEmpty);
-
-            return SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        minLines: 1,
-                        maxLines: 4,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) {
-                          if (!isDisabled) {
-                            _sendMessage();
-                          }
-                        },
-                        decoration: const InputDecoration(
-                          hintText: 'Escribir mensaje...',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      height: 48,
-                      width: 48,
-                      child: OutlinedButton(
-                        onPressed: isDisabled ? null : _pickAndSendAttachment,
-                        child: const Icon(Icons.attach_file),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      height: 48,
-                      width: 48,
-                      child: ElevatedButton(
-                        onPressed: isDisabled ? null : _sendMessage,
-                        child: messageState.isSending
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.send),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   Discussion? _resolveDiscussion(DiscussionState state) {
@@ -1053,51 +1484,12 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     return null;
   }
 
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Text('$label: $value'),
-    );
-  }
-
-  Widget _buildTagSection({
-    required String title,
-    required List<String> values,
-  }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            if (values.isEmpty)
-              const Text('-')
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: values
-                    .map((value) => Chip(label: Text(value)))
-                    .toList(),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   List<String> _extractApplicationLabels(Discussion discussion) {
     if (discussion.applications.isNotEmpty) {
       return discussion.applications
-          .map((application) {
-            final id = application.id ?? '-';
-            final name = application.name.trim().isEmpty
-                ? '(sin nombre)'
-                : application.name;
-            return '$name ($id)';
-          })
+          .map((application) => application.name.trim())
+          .where((name) => name.isNotEmpty)
+          .toSet()
           .toList(growable: false);
     }
 
@@ -1107,62 +1499,13 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
   List<String> _extractIndicatorLabels(Discussion discussion) {
     if (discussion.indicators.isNotEmpty) {
       return discussion.indicators
-          .map((indicator) {
-            final id = indicator.id ?? '-';
-            final name = indicator.name.trim().isEmpty
-                ? '(sin nombre)'
-                : indicator.name;
-            return '$name ($id)';
-          })
+          .map((indicator) => indicator.name.trim())
+          .where((name) => name.isNotEmpty)
+          .toSet()
           .toList(growable: false);
     }
 
     return discussion.resolvedIndicatorIds;
-  }
-
-  List<String> _extractTagLabels(Discussion discussion) {
-    if (discussion.tags.isNotEmpty) {
-      return discussion.tags
-          .map((tag) {
-            final name = tag.name.trim().isEmpty ? '(sin nombre)' : tag.name;
-            return '$name (${tag.id})';
-          })
-          .toList(growable: false);
-    }
-
-    return discussion.resolvedTagIds;
-  }
-
-  String _formatCreator(DiscussionCreator? creator) {
-    if (creator == null) {
-      return '-';
-    }
-
-    final name = creator.fullName?.trim();
-    final email = creator.email?.trim();
-    final id = creator.id;
-
-    if (name != null && name.isNotEmpty && email != null && email.isNotEmpty) {
-      return '$name <$email> ($id)';
-    }
-
-    if (name != null && name.isNotEmpty) {
-      return '$name ($id)';
-    }
-
-    if (email != null && email.isNotEmpty) {
-      return '$email ($id)';
-    }
-
-    return id;
-  }
-
-  String _formatDate(DateTime? value) {
-    if (value == null) {
-      return '-';
-    }
-
-    return value.toLocal().toIso8601String();
   }
 
   String _statusLabel(DiscussionRecordStatus status) {
@@ -1180,18 +1523,34 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     }
   }
 
-  void _assignToMe(Discussion discussion) {
-    final discussionId = discussion.id;
-    final currentUser = context.read<AuthBloc>().state.session?.user;
+  Color _statusAccent(DiscussionRecordStatus status, AppSemanticColors semantic) {
+    switch (status) {
+      case DiscussionRecordStatus.newDiscussion:
+        return semantic.statusNew;
+      case DiscussionRecordStatus.review:
+        return semantic.statusReview;
+      case DiscussionRecordStatus.inProgress:
+        return semantic.statusInProgress;
+      case DiscussionRecordStatus.resolved:
+        return semantic.statusResolved;
+      case DiscussionRecordStatus.unknown:
+        return Theme.of(context).colorScheme.outline;
+    }
+  }
 
-    if (discussionId == null || discussionId.isEmpty || currentUser == null) {
+  void _changeDiscussionStatus(
+    Discussion discussion,
+    DiscussionRecordStatus nextStatus,
+  ) {
+    final discussionId = discussion.id;
+    if (discussionId == null || discussionId.isEmpty) {
       return;
     }
 
     context.read<DiscussionBloc>().add(
-      AssignDiscussionToMeEvent(
+      ChangeDiscussionStatusEvent(
         discussionId: discussionId,
-        currentDeveloperUserId: currentUser.id,
+        status: nextStatus,
       ),
     );
   }
@@ -1209,75 +1568,10 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
         .map((developer) => developer.id)
         .toSet();
 
-    final savedIds = await showDialog<Set<String>>(
-      context: context,
-      builder: (dialogContext) {
-        return BlocProvider.value(
-          value: bloc,
-          child: StatefulBuilder(
-            builder: (dialogContext, setDialogState) {
-              return AlertDialog(
-                title: const Text('Asignar developers'),
-                content: SizedBox(
-                  width: 420,
-                  child: BlocBuilder<DiscussionBloc, DiscussionState>(
-                    builder: (context, state) {
-                      if (state.isLoadingAssignableDevelopers &&
-                          state.assignableDevelopers.isEmpty) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-
-                      if (state.assignableDevelopers.isEmpty) {
-                        return const Text('No hay developers disponibles.');
-                      }
-
-                      return SingleChildScrollView(
-                        child: Column(
-                          children: state.assignableDevelopers
-                              .map(
-                                (developer) => CheckboxListTile(
-                                  dense: true,
-                                  value: selectedIds.contains(developer.id),
-                                  title: Text(developer.fullName),
-                                  subtitle: developer.email == null
-                                      ? null
-                                      : Text(developer.email!),
-                                  onChanged: (checked) {
-                                    setDialogState(() {
-                                      if (checked == true) {
-                                        selectedIds.add(developer.id);
-                                      } else {
-                                        selectedIds.remove(developer.id);
-                                      }
-                                    });
-                                  },
-                                ),
-                              )
-                              .toList(growable: false),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cancelar'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(
-                      dialogContext,
-                      Set<String>.from(selectedIds),
-                    ),
-                    child: const Text('Guardar'),
-                  ),
-                ],
-              );
-            },
-          ),
-        );
-      },
-    );
+    final compactLayout = _isCompactLayout(context);
+    final savedIds = compactLayout
+        ? await _showAssignmentsBottomSheet(bloc, selectedIds)
+        : await _showAssignmentsDialog(bloc, selectedIds);
 
     if (!mounted || savedIds == null) {
       return;
@@ -1289,6 +1583,246 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
         developerUserIds: _sortedIds(savedIds),
       ),
     );
+  }
+
+  Future<Set<String>?> _showAssignmentsDialog(
+    DiscussionBloc bloc,
+    Set<String> selectedIds,
+  ) {
+    return showDialog<Set<String>>(
+      context: context,
+      builder: (dialogContext) {
+        return BlocProvider.value(
+          value: bloc,
+          child: StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              return AlertDialog(
+                title: const Text('Asignar developers'),
+                content: SizedBox(
+                  width: 420,
+                  child: _buildAssignableDevelopersList(
+                    bloc: bloc,
+                    selectedIds: selectedIds,
+                    setDialogState: setDialogState,
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancelar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      final state = bloc.state;
+                      final currentUser = context.read<AuthBloc>().state.session?.user;
+                      if (currentUser == null || !currentUser.isDeveloper) {
+                        return;
+                      }
+                      if (!state.assignableDevelopers
+                          .any((developer) => developer.id == currentUser.id)) {
+                        return;
+                      }
+                      setDialogState(() {
+                        selectedIds.add(currentUser.id);
+                      });
+                    },
+                    icon: const Icon(Icons.person_add_alt_1_rounded),
+                    label: const Text('Asignarme'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () =>
+                        Navigator.pop(dialogContext, Set<String>.from(selectedIds)),
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Future<Set<String>?> _showAssignmentsBottomSheet(
+    DiscussionBloc bloc,
+    Set<String> selectedIds,
+  ) {
+    return showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return BlocProvider.value(
+          value: bloc,
+          child: StatefulBuilder(
+            builder: (sheetContext, setDialogState) {
+              return SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                    AppSpacing.lg,
+                    AppSpacing.md,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Asignar developers',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Flexible(
+                        child: _buildAssignableDevelopersList(
+                          bloc: bloc,
+                          selectedIds: selectedIds,
+                          setDialogState: setDialogState,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(sheetContext),
+                              child: const Text('Cancelar'),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () =>
+                                  Navigator.pop(sheetContext, Set<String>.from(selectedIds)),
+                              child: const Text('Guardar'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAssignableDevelopersList({
+    required DiscussionBloc bloc,
+    required Set<String> selectedIds,
+    required void Function(VoidCallback fn) setDialogState,
+  }) {
+    return BlocBuilder<DiscussionBloc, DiscussionState>(
+      builder: (context, state) {
+        if (state.isLoadingAssignableDevelopers &&
+            state.assignableDevelopers.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (state.assignableDevelopers.isEmpty) {
+          return const Text('No hay developers disponibles.');
+        }
+
+        return ListView(
+          shrinkWrap: true,
+          children: state.assignableDevelopers
+              .map(
+                (developer) => CheckboxListTile(
+                  dense: true,
+                  value: selectedIds.contains(developer.id),
+                  title: Text(developer.fullName),
+                  subtitle: developer.email == null ? null : Text(developer.email!),
+                  onChanged: (checked) {
+                    setDialogState(() {
+                      if (checked == true) {
+                        selectedIds.add(developer.id);
+                      } else {
+                        selectedIds.remove(developer.id);
+                      }
+                    });
+                  },
+                ),
+              )
+              .toList(growable: false),
+        );
+      },
+    );
+  }
+
+  bool _isStatusBusy(String? discussionId) {
+    final state = context.watch<DiscussionBloc>().state;
+    return discussionId != null &&
+        discussionId.isNotEmpty &&
+        state.isUpdatingStatus &&
+        state.operationDiscussionId == discussionId;
+  }
+
+  bool _isAssignmentsBusy(String? discussionId) {
+    final state = context.watch<DiscussionBloc>().state;
+    return discussionId != null &&
+        discussionId.isNotEmpty &&
+        state.isUpdatingAssignments &&
+        state.operationDiscussionId == discussionId;
+  }
+
+  bool _isCompactLayout(BuildContext context) {
+    return MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
+  }
+
+  String _formatShortDateTime(DateTime? value) {
+    if (value == null) {
+      return '-';
+    }
+
+    final local = value.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+
+    return '$day/$month $hh:$mm';
+  }
+
+  String _normalizedTitle(String title) {
+    final value = title.trim();
+    return value.isEmpty ? '(Sin titulo)' : value;
+  }
+
+  String _creatorDisplayName(DiscussionCreator? creator) {
+    if (creator == null) {
+      return 'Sin creador';
+    }
+
+    final fullName = creator.fullName?.trim();
+    if (fullName != null && fullName.isNotEmpty) {
+      return fullName;
+    }
+
+    final email = creator.email?.trim();
+    if (email != null && email.isNotEmpty) {
+      return email;
+    }
+
+    return creator.id;
+  }
+
+  String _initials(String fullName) {
+    final parts = fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+
+    if (parts.isEmpty) {
+      return '?';
+    }
+
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+
+    return '${parts.first.substring(0, 1).toUpperCase()}${parts.last.substring(0, 1).toUpperCase()}';
   }
 
   List<String> _sortedIds(Set<String> ids) {
@@ -1307,6 +1841,52 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _showCopyableErrorDialog(String message) async {
+    if (!mounted || _isCopyableErrorDialogOpen) {
+      return;
+    }
+
+    _isCopyableErrorDialogOpen = true;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Error de carga de video'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: SingleChildScrollView(
+              child: SelectableText(message),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: message));
+                if (!mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(content: Text('Error copiado al portapapeles.')),
+                  );
+              },
+              icon: const Icon(Icons.copy_all_rounded),
+              label: const Text('Copiar error'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    _isCopyableErrorDialogOpen = false;
+  }
+
   String _timestampNow() {
     final now = DateTime.now();
     final hh = now.hour.toString().padLeft(2, '0');
@@ -1314,5 +1894,188 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     final ss = now.second.toString().padLeft(2, '0');
     final ms = now.millisecond.toString().padLeft(3, '0');
     return '$hh:$mm:$ss.$ms';
+  }
+
+  String _buildWebUploadDiagnosticBlock() {
+    final baseUrl = NetworkConfig.fromEnvironment().baseUrl;
+    final origin = Uri.base.origin;
+    final endpointPath = ApiEndpoints.discussionMessageFilesByDiscussionId(
+      Uri.encodeComponent(widget.discussionId),
+    );
+    final endpointUrl = _joinUrl(baseUrl, endpointPath);
+
+    return 'Diagnostico web\n'
+        '- Origen web: $origin\n'
+        '- API_BASE_URL: $baseUrl\n'
+        '- Endpoint upload: $endpointUrl\n'
+        '- Requiere CORS para OPTIONS y POST con Authorization + Content-Type + Accept\n'
+        '- Timestamp: ${DateTime.now().toIso8601String()}';
+  }
+
+  String _joinUrl(String baseUrl, String path) {
+    final base = baseUrl.trim();
+    final tail = path.startsWith('/') ? path.substring(1) : path;
+    if (base.endsWith('/')) {
+      return '$base$tail';
+    }
+    return '$base/$tail';
+  }
+
+  _OptimizedImageResult _optimizeImageForUpload({
+    required Uint8List originalBytes,
+    required String originalFileName,
+  }) {
+    try {
+      final decoded = img.decodeImage(originalBytes);
+      if (decoded == null) {
+        return _OptimizedImageResult(
+          bytes: originalBytes,
+          fileName: originalFileName,
+          wasOptimized: false,
+        );
+      }
+
+      const maxSide = 1440;
+      var processed = decoded;
+      final longestSide = decoded.width >= decoded.height
+          ? decoded.width
+          : decoded.height;
+
+      if (longestSide > maxSide) {
+        final scale = maxSide / longestSide;
+        final targetWidth = (decoded.width * scale).round();
+        final targetHeight = (decoded.height * scale).round();
+        processed = img.copyResize(
+          decoded,
+          width: targetWidth,
+          height: targetHeight,
+          interpolation: img.Interpolation.linear,
+        );
+      }
+
+      var jpg = img.encodeJpg(processed, quality: 70);
+      if (jpg.length > 900 * 1024) {
+        jpg = img.encodeJpg(processed, quality: 58);
+      }
+      if (jpg.length > 700 * 1024) {
+        jpg = img.encodeJpg(processed, quality: 48);
+      }
+
+      if (jpg.length >= originalBytes.length) {
+        return _OptimizedImageResult(
+          bytes: originalBytes,
+          fileName: originalFileName,
+          wasOptimized: false,
+        );
+      }
+
+      return _OptimizedImageResult(
+        bytes: Uint8List.fromList(jpg),
+        fileName: _withJpgExtension(originalFileName),
+        wasOptimized: true,
+      );
+    } catch (_) {
+      return _OptimizedImageResult(
+        bytes: originalBytes,
+        fileName: originalFileName,
+        wasOptimized: false,
+      );
+    }
+  }
+
+  String _withJpgExtension(String fileName) {
+    final normalized = fileName.trim();
+    if (normalized.isEmpty) {
+      return 'image.jpg';
+    }
+
+    final dotIndex = normalized.lastIndexOf('.');
+    if (dotIndex <= 0) {
+      return '$normalized.jpg';
+    }
+
+    return '${normalized.substring(0, dotIndex)}.jpg';
+  }
+}
+
+class _OptimizedImageResult {
+  const _OptimizedImageResult({
+    required this.bytes,
+    required this.fileName,
+    required this.wasOptimized,
+  });
+
+  final Uint8List bytes;
+  final String fileName;
+  final bool wasOptimized;
+}
+
+enum _AttachmentOption {
+  image,
+  audio,
+  video,
+  file;
+
+  String get label {
+    switch (this) {
+      case _AttachmentOption.image:
+        return 'Imagen';
+      case _AttachmentOption.audio:
+        return 'Audio';
+      case _AttachmentOption.video:
+        return 'Video';
+      case _AttachmentOption.file:
+        return 'Archivo';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case _AttachmentOption.image:
+        return Icons.image_outlined;
+      case _AttachmentOption.audio:
+        return Icons.audiotrack_outlined;
+      case _AttachmentOption.video:
+        return Icons.videocam_outlined;
+      case _AttachmentOption.file:
+        return Icons.attach_file_rounded;
+    }
+  }
+
+  DiscussionMessageType get type {
+    switch (this) {
+      case _AttachmentOption.image:
+        return DiscussionMessageType.image;
+      case _AttachmentOption.audio:
+        return DiscussionMessageType.audio;
+      case _AttachmentOption.video:
+        return DiscussionMessageType.video;
+      case _AttachmentOption.file:
+        return DiscussionMessageType.file;
+    }
+  }
+
+  FileType get filePickerType {
+    switch (this) {
+      case _AttachmentOption.image:
+      case _AttachmentOption.audio:
+      case _AttachmentOption.video:
+        return FileType.custom;
+      case _AttachmentOption.file:
+        return FileType.any;
+    }
+  }
+
+  List<String>? get allowedExtensions {
+    switch (this) {
+      case _AttachmentOption.image:
+        return const ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'heic', 'heif'];
+      case _AttachmentOption.audio:
+        return const ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'opus', 'flac', 'amr'];
+      case _AttachmentOption.video:
+        return const ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp'];
+      case _AttachmentOption.file:
+        return null;
+    }
   }
 }

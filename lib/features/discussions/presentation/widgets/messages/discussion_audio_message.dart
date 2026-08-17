@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../../../../core/theme/app_radius.dart';
+
 class DiscussionAudioMessage extends StatefulWidget {
   const DiscussionAudioMessage({
     required this.fileUrl,
@@ -110,7 +112,7 @@ class _DiscussionAudioMessageState extends State<DiscussionAudioMessage> {
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: _buildPlayerContent(context),
         ),

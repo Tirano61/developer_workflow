@@ -46,6 +46,8 @@ dependencies:
   firebase_messaging: ^16.5.0
   receive_sharing_intent: 1.8.1
   cross_file: ^0.3.4+2
+  web: ^1.1.1
+  image: ^4.5.4
 
 dev_dependencies:
   flutter_test:

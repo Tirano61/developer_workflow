@@ -127,15 +127,27 @@ class DiscussionMessageRemoteDataSourceImpl
       content: content,
     );
 
-    final response = await _restClient.postMultipart<Object?>(
-      ApiEndpoints.discussionMessageFilesByDiscussionId(
-        Uri.encodeComponent(discussionId),
-      ),
-      fields: payload.toAttachmentFormFields(),
-      fileField: 'file',
-      fileBytes: fileBytes,
-      fileName: normalizedFileName,
+    final endpoint = ApiEndpoints.discussionMessageFilesByDiscussionId(
+      Uri.encodeComponent(discussionId),
     );
+
+    RestResponse<Object?> response;
+    try {
+      response = await _restClient.postMultipart<Object?>(
+        endpoint,
+        fields: payload.toAttachmentFormFields(),
+        fileField: 'file',
+        fileBytes: fileBytes,
+        fileName: normalizedFileName,
+      );
+    } on NetworkException catch (error) {
+      throw NetworkException(
+        '${error.message}\n\n'
+        'Diagnostico web: si este mismo archivo funciona en tablet, '
+        'el problema suele ser CORS/preflight del endpoint de archivos '
+        '(OPTIONS/POST). Endpoint: $endpoint',
+      );
+    }
 
     return DiscussionMessageModel.fromPayload(
       response.data,
