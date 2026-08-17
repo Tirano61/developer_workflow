@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../../core/theme/app_radius.dart';
 import '../../../../discussion_messages/domain/entities/discussion_message.dart';
 import 'discussion_attachment_helpers.dart';
 
@@ -36,7 +37,7 @@ class DiscussionFileMessage extends StatelessWidget {
             border: Border.all(
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(AppRadius.card),
           ),
           child: Row(
             children: [

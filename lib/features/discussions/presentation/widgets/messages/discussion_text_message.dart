@@ -8,6 +8,9 @@ class DiscussionTextMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final trimmed = content.trim();
-    return Text(trimmed.isEmpty ? '(sin contenido)' : trimmed);
+    return Text(
+      trimmed.isEmpty ? '(sin contenido)' : trimmed,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.45),
+    );
   }
 }
