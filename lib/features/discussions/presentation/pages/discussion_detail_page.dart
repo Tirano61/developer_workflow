@@ -13,14 +13,23 @@ import '../../../../core/theme/app_breakpoints.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_radius.dart';
 import '../../../../core/theme/app_spacing.dart';
+import '../../../applications/presentation/bloc/application_bloc.dart';
+import '../../../applications/presentation/bloc/application_event.dart';
+import '../../../applications/presentation/bloc/application_state.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
 import '../../../discussion_messages/domain/entities/discussion_message.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_bloc.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_event.dart';
 import '../../../discussion_messages/presentation/bloc/discussion_message_state.dart';
+import '../../../indicators/presentation/bloc/indicator_bloc.dart';
+import '../../../indicators/presentation/bloc/indicator_event.dart';
+import '../../../indicators/presentation/bloc/indicator_state.dart';
 import '../../../notifications/presentation/bloc/notification_bloc.dart';
 import '../../../notifications/presentation/bloc/notification_event.dart';
 import '../../../notifications/presentation/bloc/notification_state.dart';
+import '../../../tags/presentation/bloc/tag_bloc.dart';
+import '../../../tags/presentation/bloc/tag_event.dart';
+import '../../../tags/presentation/bloc/tag_state.dart';
 import '../../domain/entities/discussion.dart';
 import '../../domain/entities/discussion_developer.dart';
 import '../bloc/discussion_bloc.dart';
@@ -71,6 +80,7 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
     super.initState();
     _lastKnownMessageCount = 0;
     _setActiveDiscussionId(widget.discussionId);
+    _loadCatalogs();
     _loadDiscussion();
     _loadMessages();
   }
@@ -1493,7 +1503,18 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
           .toList(growable: false);
     }
 
-    return discussion.resolvedApplicationIds;
+    final labelsById = {
+      for (final item in context.read<ApplicationBloc>().state.applications)
+        if ((item.id?.trim() ?? '').isNotEmpty) item.id!.trim(): item.name.trim(),
+    };
+
+    final labels = discussion.resolvedApplicationIds
+        .map((id) => labelsById[id.trim()] ?? '')
+        .where((name) => name.trim().isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    return labels;
   }
 
   List<String> _extractIndicatorLabels(Discussion discussion) {
@@ -1505,7 +1526,37 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
           .toList(growable: false);
     }
 
-    return discussion.resolvedIndicatorIds;
+    final labelsById = {
+      for (final item in context.read<IndicatorBloc>().state.indicators)
+        if ((item.id?.trim() ?? '').isNotEmpty) item.id!.trim(): item.name.trim(),
+    };
+
+    final labels = discussion.resolvedIndicatorIds
+        .map((id) => labelsById[id.trim()] ?? '')
+        .where((name) => name.trim().isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    return labels;
+  }
+
+  void _loadCatalogs() {
+    final appBloc = context.read<ApplicationBloc>();
+    if (appBloc.state.applications.isEmpty &&
+        appBloc.state.status != ApplicationStatus.loading) {
+      appBloc.add(const LoadApplicationsEvent());
+    }
+
+    final indicatorBloc = context.read<IndicatorBloc>();
+    if (indicatorBloc.state.indicators.isEmpty &&
+        indicatorBloc.state.status != IndicatorStatus.loading) {
+      indicatorBloc.add(const LoadIndicatorsEvent());
+    }
+
+    final tagBloc = context.read<TagBloc>();
+    if (tagBloc.state.tags.isEmpty && tagBloc.state.status != TagStatus.loading) {
+      tagBloc.add(const LoadTagsEvent());
+    }
   }
 
   String _statusLabel(DiscussionRecordStatus status) {

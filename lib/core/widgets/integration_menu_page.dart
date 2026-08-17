@@ -10,6 +10,9 @@ class IntegrationMenuPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDeveloper =
+        context.watch<AuthBloc>().state.session?.user.isDeveloper ?? false;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Develop Workflow - Integracion REST'),
@@ -33,32 +36,23 @@ class IntegrationMenuPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Fase 4: Applications + Indicators + Tags + Discussions',
+                  'Develop Workflow',
                   style: Theme.of(context).textTheme.titleLarge,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, AppRoutes.applications),
-                  child: const Text('Probar Applications'),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () =>
-                      Navigator.pushNamed(context, AppRoutes.indicators),
-                  child: const Text('Probar Indicators'),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(context, AppRoutes.tags),
-                  child: const Text('Crear/Probar Tags'),
-                ),
-                const SizedBox(height: 12),
+                if (isDeveloper) ...[
+                  ElevatedButton(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, AppRoutes.applications),
+                    child: const Text('Administrar catalogos'),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 ElevatedButton(
                   onPressed: () =>
                       Navigator.pushNamed(context, AppRoutes.discussions),
-                  child: const Text('Probar Discussions'),
+                  child: const Text('Discussions'),
                 ),
               ],
             ),

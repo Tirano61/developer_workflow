@@ -53,24 +53,36 @@ class AppRouter {
       case AppRoutes.applications:
         return _buildProtectedRoute(
           settings: settings,
-          builder: (_) => BlocProvider<ApplicationBloc>(
-            create: (_) => sl<ApplicationBloc>(),
+          builder: (_) => MultiBlocProvider(
+            providers: [
+              BlocProvider<ApplicationBloc>(create: (_) => sl<ApplicationBloc>()),
+              BlocProvider<IndicatorBloc>(create: (_) => sl<IndicatorBloc>()),
+              BlocProvider<TagBloc>(create: (_) => sl<TagBloc>()),
+            ],
             child: const ApplicationsPage(),
           ),
         );
       case AppRoutes.indicators:
         return _buildProtectedRoute(
           settings: settings,
-          builder: (_) => BlocProvider<IndicatorBloc>(
-            create: (_) => sl<IndicatorBloc>(),
+          builder: (_) => MultiBlocProvider(
+            providers: [
+              BlocProvider<ApplicationBloc>(create: (_) => sl<ApplicationBloc>()),
+              BlocProvider<IndicatorBloc>(create: (_) => sl<IndicatorBloc>()),
+              BlocProvider<TagBloc>(create: (_) => sl<TagBloc>()),
+            ],
             child: const IndicatorsPage(),
           ),
         );
       case AppRoutes.tags:
         return _buildProtectedRoute(
           settings: settings,
-          builder: (_) => BlocProvider<TagBloc>(
-            create: (_) => sl<TagBloc>(),
+          builder: (_) => MultiBlocProvider(
+            providers: [
+              BlocProvider<ApplicationBloc>(create: (_) => sl<ApplicationBloc>()),
+              BlocProvider<IndicatorBloc>(create: (_) => sl<IndicatorBloc>()),
+              BlocProvider<TagBloc>(create: (_) => sl<TagBloc>()),
+            ],
             child: const TagsPage(),
           ),
         );
@@ -113,6 +125,9 @@ class AppRouter {
               BlocProvider<DiscussionMessageBloc>(
                 create: (_) => sl<DiscussionMessageBloc>(),
               ),
+              BlocProvider<ApplicationBloc>(create: (_) => sl<ApplicationBloc>()),
+              BlocProvider<IndicatorBloc>(create: (_) => sl<IndicatorBloc>()),
+              BlocProvider<TagBloc>(create: (_) => sl<TagBloc>()),
             ],
             child: DiscussionDetailPage(discussionId: discussionId),
           ),

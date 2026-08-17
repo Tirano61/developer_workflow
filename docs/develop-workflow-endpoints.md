@@ -163,7 +163,12 @@ Autenticacion:
 
 ### PATCH /develop-workflow/discussions/:id
 - Auth: Usuario autenticado
-- Descripcion: Actualiza discussion (propia o cualquiera si rol developer).
+- Descripcion: Actualiza discussion. `title` y `type` pueden modificarse por el creador o por un developer. `applicationIds` e `indicatorIds` solo pueden modificarse por un developer.
+- Reglas de contexto (applications/indicators):
+  - Permite reemplazar completamente asociaciones enviando los arrays.
+  - Enviar arrays vacios (`[]`) elimina todas las asociaciones de ese catalogo.
+  - Si un id no existe, responde error.
+  - Si hay ids duplicados, responde error.
 - Body:
 ```json
 {
@@ -239,6 +244,9 @@ Autenticacion:
 ### DELETE /develop-workflow/discussions/:id/indicators/:indicatorId
 - Auth: Developer
 
+### Nota sobre reemplazo masivo de contexto
+- Para reemplazar todas las applications/indicators de una discussion en una sola operacion, usar `PATCH /develop-workflow/discussions/:id` con `applicationIds` y/o `indicatorIds`.
+
 ### POST /develop-workflow/discussions/:id/tags
 - Auth: Developer
 - Body:
@@ -283,13 +291,25 @@ Autenticacion:
 
 ### PATCH /develop-workflow/discussions/:discussionId/messages/:messageId
 - Auth: Usuario autenticado
-- Descripcion: Actualiza el contenido de un mensaje (autor del mensaje o developer).
+- Descripcion: Actualiza el contenido de un mensaje solo si el usuario autenticado es el autor.
+- Restricciones:
+  - Solo permite editar mensajes `TEXT`.
+  - No permite reemplazar archivos de mensajes `IMAGE | AUDIO | VIDEO | FILE` desde este endpoint.
 - Body:
 ```json
 {
   "content": "Actualizacion del mensaje"
 }
 ```
+
+### DELETE /develop-workflow/discussions/:discussionId/messages/:messageId
+- Auth: Usuario autenticado
+- Descripcion: Elimina un mensaje solo si el usuario autenticado es el autor.
+- Reglas:
+  - Si el mensaje es `TEXT`, elimina el registro en base de datos.
+  - Si el mensaje tiene `cloudinaryPublicId`, primero intenta eliminar el recurso en Cloudinary usando `resource_type` segun tipo real (`IMAGE -> image`, `VIDEO/AUDIO -> video`, `FILE -> raw`) y luego elimina DB.
+  - Si Cloudinary responde `not found`, se considera idempotente y se elimina DB.
+  - Si Cloudinary falla (error o respuesta inesperada), no se elimina DB para evitar archivos huerfanos.
 
 ## Devices (FCM)
 
@@ -331,6 +351,100 @@ Autenticacion:
   }
 }
 ```
+
+### Push automaticas de eventos (Fase 8B)
+- No crea endpoints nuevos: se disparan desde endpoints funcionales existentes.
+- Regla de destinatarios: usuarios activos (`isActive = true`) con al menos un device en `dw_user_devices`.
+- Exclusiones: nunca se envia push al usuario actor que genero el evento.
+- Si un usuario activo no tiene devices, no se envia y no genera error.
+- Todos los valores del objeto `data` se envian como string.
+
+Eventos implementados:
+
+1) Discussion creada
+- Trigger: `POST /develop-workflow/discussions`
+- Push:
+```json
+{
+  "notification": {
+    "title": "Nueva discusión",
+    "body": "{fullName} creó: {discussion.title}"
+  },
+  "data": {
+    "type": "DISCUSSION_CREATED",
+    "discussionId": "UUID"
+  }
+}
+```
+- Nota: crear discussion tambien crea mensaje inicial TEXT, pero se envia solo `DISCUSSION_CREATED` (sin push adicional de mensaje).
+
+2) Mensaje nuevo (TEXT | IMAGE | AUDIO | VIDEO | FILE)
+- Triggers:
+  - `POST /develop-workflow/discussions/:discussionId/messages`
+  - `POST /develop-workflow/discussions/:discussionId/messages/files`
+- Tipos de notificacion por `messageType`:
+  - `TEXT`  -> title `Nuevo mensaje` + body `{fullName} respondió en: {discussion.title}`
+  - `IMAGE` -> title `Nueva imagen` + body `{fullName} agregó una imagen en: {discussion.title}`
+  - `AUDIO` -> title `Nuevo audio` + body `{fullName} agregó un audio en: {discussion.title}`
+  - `VIDEO` -> title `Nuevo video` + body `{fullName} agregó un video en: {discussion.title}`
+  - `FILE`  -> title `Nuevo archivo` + body `{fullName} agregó un archivo en: {discussion.title}`
+- Payload comun:
+```json
+{
+  "data": {
+    "type": "DISCUSSION_MESSAGE",
+    "discussionId": "UUID",
+    "messageId": "UUID",
+    "messageType": "TEXT"
+  }
+}
+```
+
+3) Cambio de estado
+- Trigger: `PATCH /develop-workflow/discussions/:id/status`
+- Push:
+```json
+{
+  "notification": {
+    "title": "Estado actualizado",
+    "body": "{fullName} movió \"{discussion.title}\" a {estadoVisible}"
+  },
+  "data": {
+    "type": "DISCUSSION_STATUS_CHANGED",
+    "discussionId": "UUID",
+    "status": "IN_PROGRESS"
+  }
+}
+```
+- Mapeo visible de estados:
+  - `NEW` -> `Entrada`
+  - `REVIEW` -> `Revisión`
+  - `IN_PROGRESS` -> `Trabajando`
+  - `RESOLVED` -> `Resuelto`
+
+4) Cambios de asignacion (asignar, reemplazar, desasignar)
+- Triggers:
+  - `POST /develop-workflow/discussions/:id/assignments`
+  - `PUT /develop-workflow/discussions/:id/assignments`
+  - `DELETE /develop-workflow/discussions/:id/assignments/:developerUserId`
+- Push:
+```json
+{
+  "notification": {
+    "title": "Asignación actualizada",
+    "body": "{fullName} actualizó responsables de: {discussion.title}"
+  },
+  "data": {
+    "type": "DISCUSSION_ASSIGNMENT_CHANGED",
+    "discussionId": "UUID"
+  }
+}
+```
+
+Notas operativas:
+- El envio push no revierte operaciones funcionales (discussion, message, status o assignment) si Firebase falla.
+- Se mantiene la limpieza automatica de tokens invalidos de Fase 8A.
+- No se actualiza `lastReadAt` por enviar push; read/unread sigue independiente.
 
 ## Tags
 

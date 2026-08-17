@@ -14,7 +14,30 @@ class ApiEndpoints {
 
   static String applicationById(String id) => '$applications/$id';
 
+  static String applicationsAll() => '$applications/all';
+
+  static String applicationActiveById(String id) => '${applicationById(id)}/active';
+
+  static String applicationIndicatorsById(String applicationId) =>
+      '${applicationById(applicationId)}/indicators';
+
+  static String applicationIndicatorByIds(String applicationId, String indicatorId) =>
+      '${applicationIndicatorsById(applicationId)}/$indicatorId';
+
   static String indicatorById(String id) => '$indicators/$id';
+
+  static String indicatorsAll() => '$indicators/all';
+
+  static String indicatorActiveById(String id) => '${indicatorById(id)}/active';
+
+  static String indicatorApplicationsById(String indicatorId) =>
+      '${indicatorById(indicatorId)}/applications';
+
+  static String tagsAll() => '$tags/all';
+
+  static String tagById(String id) => '$tags/$id';
+
+  static String tagActiveById(String id) => '${tagById(id)}/active';
 
   static String discussionById(String id) => '$discussions/$id';
 

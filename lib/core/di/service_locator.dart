@@ -7,8 +7,12 @@ import '../../features/applications/data/datasources/application_remote_data_sou
 import '../../features/applications/data/repositories/application_repository_impl.dart';
 import '../../features/applications/domain/repositories/application_repository.dart';
 import '../../features/applications/domain/usecases/create_application.dart';
+import '../../features/applications/domain/usecases/get_application_indicators.dart';
 import '../../features/applications/domain/usecases/get_application.dart';
 import '../../features/applications/domain/usecases/get_applications.dart';
+import '../../features/applications/domain/usecases/associate_indicator_to_application.dart';
+import '../../features/applications/domain/usecases/remove_indicator_from_application.dart';
+import '../../features/applications/domain/usecases/set_application_active.dart';
 import '../../features/applications/domain/usecases/update_application.dart';
 import '../../features/applications/presentation/bloc/application_bloc.dart';
 import '../../features/auth/data/datasources/auth_local_data_source.dart';
@@ -45,8 +49,10 @@ import '../../features/indicators/data/datasources/indicator_remote_data_source.
 import '../../features/indicators/data/repositories/indicator_repository_impl.dart';
 import '../../features/indicators/domain/repositories/indicator_repository.dart';
 import '../../features/indicators/domain/usecases/create_indicator.dart';
+import '../../features/indicators/domain/usecases/get_indicator_applications.dart';
 import '../../features/indicators/domain/usecases/get_indicator.dart';
 import '../../features/indicators/domain/usecases/get_indicators.dart';
+import '../../features/indicators/domain/usecases/set_indicator_active.dart';
 import '../../features/indicators/domain/usecases/update_indicator.dart';
 import '../../features/indicators/presentation/bloc/indicator_bloc.dart';
 import '../../features/notifications/data/datasources/firebase_messaging_data_source.dart';
@@ -63,6 +69,8 @@ import '../../features/tags/data/repositories/tag_repository_impl.dart';
 import '../../features/tags/domain/repositories/tag_repository.dart';
 import '../../features/tags/domain/usecases/create_tag.dart';
 import '../../features/tags/domain/usecases/get_tags.dart';
+import '../../features/tags/domain/usecases/set_tag_active.dart';
+import '../../features/tags/domain/usecases/update_tag.dart';
 import '../../features/tags/presentation/bloc/tag_bloc.dart';
 import '../network/auth_token_provider.dart';
 import '../network/http_rest_client.dart';
@@ -187,12 +195,28 @@ Future<void> configureDependencies() async {
   sl.registerLazySingleton<UpdateApplication>(
     () => UpdateApplication(sl<ApplicationRepository>()),
   );
+  sl.registerLazySingleton<SetApplicationActive>(
+    () => SetApplicationActive(sl<ApplicationRepository>()),
+  );
+  sl.registerLazySingleton<GetApplicationIndicators>(
+    () => GetApplicationIndicators(sl<ApplicationRepository>()),
+  );
+  sl.registerLazySingleton<AssociateIndicatorToApplication>(
+    () => AssociateIndicatorToApplication(sl<ApplicationRepository>()),
+  );
+  sl.registerLazySingleton<RemoveIndicatorFromApplication>(
+    () => RemoveIndicatorFromApplication(sl<ApplicationRepository>()),
+  );
   sl.registerFactory<ApplicationBloc>(
     () => ApplicationBloc(
       getApplications: sl<GetApplications>(),
       getApplication: sl<GetApplication>(),
       createApplication: sl<CreateApplication>(),
       updateApplication: sl<UpdateApplication>(),
+      setApplicationActive: sl<SetApplicationActive>(),
+      getApplicationIndicators: sl<GetApplicationIndicators>(),
+      associateIndicator: sl<AssociateIndicatorToApplication>(),
+      removeAssociatedIndicator: sl<RemoveIndicatorFromApplication>(),
     ),
   );
 
@@ -216,12 +240,20 @@ Future<void> configureDependencies() async {
   sl.registerLazySingleton<UpdateIndicator>(
     () => UpdateIndicator(sl<IndicatorRepository>()),
   );
+  sl.registerLazySingleton<SetIndicatorActive>(
+    () => SetIndicatorActive(sl<IndicatorRepository>()),
+  );
+  sl.registerLazySingleton<GetIndicatorApplications>(
+    () => GetIndicatorApplications(sl<IndicatorRepository>()),
+  );
   sl.registerFactory<IndicatorBloc>(
     () => IndicatorBloc(
       getIndicators: sl<GetIndicators>(),
       getIndicator: sl<GetIndicator>(),
       createIndicator: sl<CreateIndicator>(),
       updateIndicator: sl<UpdateIndicator>(),
+      setIndicatorActive: sl<SetIndicatorActive>(),
+      getIndicatorApplications: sl<GetIndicatorApplications>(),
     ),
   );
 
@@ -233,8 +265,17 @@ Future<void> configureDependencies() async {
   );
   sl.registerLazySingleton<GetTags>(() => GetTags(sl<TagRepository>()));
   sl.registerLazySingleton<CreateTag>(() => CreateTag(sl<TagRepository>()));
+  sl.registerLazySingleton<UpdateTag>(() => UpdateTag(sl<TagRepository>()));
+  sl.registerLazySingleton<SetTagActive>(
+    () => SetTagActive(sl<TagRepository>()),
+  );
   sl.registerFactory<TagBloc>(
-    () => TagBloc(getTags: sl<GetTags>(), createTag: sl<CreateTag>()),
+    () => TagBloc(
+      getTags: sl<GetTags>(),
+      createTag: sl<CreateTag>(),
+      updateTag: sl<UpdateTag>(),
+      setTagActive: sl<SetTagActive>(),
+    ),
   );
 
   sl.registerLazySingleton<DiscussionRemoteDataSource>(

@@ -1,16 +1,34 @@
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/network/rest_client.dart';
+import '../../../indicators/data/models/indicator_model.dart';
 import '../models/application_model.dart';
 
 abstract class ApplicationRemoteDataSource {
-  Future<List<ApplicationModel>> getApplications();
+  Future<List<ApplicationModel>> getApplications({bool includeInactive = false});
 
   Future<ApplicationModel> getApplicationById(String id);
 
   Future<ApplicationModel> createApplication(ApplicationModel model);
 
   Future<ApplicationModel> updateApplication(ApplicationModel model);
+
+  Future<ApplicationModel> setApplicationActive({
+    required String id,
+    required bool active,
+  });
+
+  Future<List<IndicatorModel>> getIndicatorsByApplicationId(String applicationId);
+
+  Future<void> addIndicatorToApplication({
+    required String applicationId,
+    required String indicatorId,
+  });
+
+  Future<void> removeIndicatorFromApplication({
+    required String applicationId,
+    required String indicatorId,
+  });
 }
 
 class ApplicationRemoteDataSourceImpl implements ApplicationRemoteDataSource {
@@ -20,8 +38,12 @@ class ApplicationRemoteDataSourceImpl implements ApplicationRemoteDataSource {
   final RestClient _restClient;
 
   @override
-  Future<List<ApplicationModel>> getApplications() async {
-    final response = await _restClient.get<Object?>(ApiEndpoints.applications);
+  Future<List<ApplicationModel>> getApplications({
+    bool includeInactive = false,
+  }) async {
+    final response = await _restClient.get<Object?>(
+      includeInactive ? ApiEndpoints.applicationsAll() : ApiEndpoints.applications,
+    );
     final list = _extractList(response.data, key: 'applications');
 
     return list
@@ -65,6 +87,86 @@ class ApplicationRemoteDataSourceImpl implements ApplicationRemoteDataSource {
     );
     final map = _extractEntityMap(response.data, key: 'application');
     return ApplicationModel.fromJson(map);
+  }
+
+  @override
+  Future<ApplicationModel> setApplicationActive({
+    required String id,
+    required bool active,
+  }) async {
+    final normalizedId = id.trim();
+    if (normalizedId.isEmpty) {
+      throw const ValidationException('Se requiere un id de Application.');
+    }
+
+    final response = await _restClient.patch<Object?>(
+      ApiEndpoints.applicationActiveById(Uri.encodeComponent(normalizedId)),
+      body: <String, dynamic>{'active': active},
+    );
+    final map = _extractEntityMap(response.data, key: 'application');
+    return ApplicationModel.fromJson(map);
+  }
+
+  @override
+  Future<List<IndicatorModel>> getIndicatorsByApplicationId(
+    String applicationId,
+  ) async {
+    final normalizedId = applicationId.trim();
+    if (normalizedId.isEmpty) {
+      throw const ValidationException('Se requiere un id de Application.');
+    }
+
+    final response = await _restClient.get<Object?>(
+      ApiEndpoints.applicationIndicatorsById(Uri.encodeComponent(normalizedId)),
+    );
+
+    final list = _extractList(response.data, key: 'indicators');
+    return list
+        .map((item) => IndicatorModel.fromJson(_extractMap(item)))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> addIndicatorToApplication({
+    required String applicationId,
+    required String indicatorId,
+  }) async {
+    final normalizedApplicationId = applicationId.trim();
+    final normalizedIndicatorId = indicatorId.trim();
+    if (normalizedApplicationId.isEmpty || normalizedIndicatorId.isEmpty) {
+      throw const ValidationException(
+        'Se requieren applicationId e indicatorId para asociar.',
+      );
+    }
+
+    await _restClient.post<Object?>(
+      ApiEndpoints.applicationIndicatorByIds(
+        Uri.encodeComponent(normalizedApplicationId),
+        Uri.encodeComponent(normalizedIndicatorId),
+      ),
+      body: const <String, dynamic>{},
+    );
+  }
+
+  @override
+  Future<void> removeIndicatorFromApplication({
+    required String applicationId,
+    required String indicatorId,
+  }) async {
+    final normalizedApplicationId = applicationId.trim();
+    final normalizedIndicatorId = indicatorId.trim();
+    if (normalizedApplicationId.isEmpty || normalizedIndicatorId.isEmpty) {
+      throw const ValidationException(
+        'Se requieren applicationId e indicatorId para desasociar.',
+      );
+    }
+
+    await _restClient.delete<Object?>(
+      ApiEndpoints.applicationIndicatorByIds(
+        Uri.encodeComponent(normalizedApplicationId),
+        Uri.encodeComponent(normalizedIndicatorId),
+      ),
+    );
   }
 
   List<dynamic> _extractList(Object? payload, {required String key}) {

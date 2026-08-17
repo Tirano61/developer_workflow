@@ -4,9 +4,13 @@ import '../../../../core/network/rest_client.dart';
 import '../models/tag_model.dart';
 
 abstract class TagRemoteDataSource {
-  Future<List<TagModel>> getTags();
+  Future<List<TagModel>> getTags({bool includeInactive = false});
 
   Future<TagModel> createTag(TagModel tag);
+
+  Future<TagModel> updateTag(TagModel tag);
+
+  Future<TagModel> setTagActive({required String id, required bool active});
 }
 
 class TagRemoteDataSourceImpl implements TagRemoteDataSource {
@@ -16,8 +20,10 @@ class TagRemoteDataSourceImpl implements TagRemoteDataSource {
   final RestClient _restClient;
 
   @override
-  Future<List<TagModel>> getTags() async {
-    final response = await _restClient.get<Object?>(ApiEndpoints.tags);
+  Future<List<TagModel>> getTags({bool includeInactive = false}) async {
+    final response = await _restClient.get<Object?>(
+      includeInactive ? ApiEndpoints.tagsAll() : ApiEndpoints.tags,
+    );
     final list = _extractList(response.data, key: 'tags');
 
     return list
@@ -70,6 +76,44 @@ class TagRemoteDataSourceImpl implements TagRemoteDataSource {
     throw const DataParsingException(
       'No se pudo crear el Tag por un formato de request inesperado.',
     );
+  }
+
+  @override
+  Future<TagModel> updateTag(TagModel tag) async {
+    final id = tag.id?.trim() ?? '';
+    final name = tag.name.trim();
+
+    if (id.isEmpty) {
+      throw const ValidationException('Se requiere un id para actualizar Tag.');
+    }
+
+    if (name.isEmpty) {
+      throw const ValidationException('El nombre del Tag es obligatorio.');
+    }
+
+    final response = await _restClient.patch<Object?>(
+      ApiEndpoints.tagById(Uri.encodeComponent(id)),
+      body: <String, dynamic>{'name': name},
+    );
+
+    final map = _extractCreatedTagMap(response.data);
+    return TagModel.fromJson(map);
+  }
+
+  @override
+  Future<TagModel> setTagActive({required String id, required bool active}) async {
+    final normalizedId = id.trim();
+    if (normalizedId.isEmpty) {
+      throw const ValidationException('Se requiere un id de Tag.');
+    }
+
+    final response = await _restClient.patch<Object?>(
+      ApiEndpoints.tagActiveById(Uri.encodeComponent(normalizedId)),
+      body: <String, dynamic>{'active': active},
+    );
+
+    final map = _extractCreatedTagMap(response.data);
+    return TagModel.fromJson(map);
   }
 
   List<dynamic> _extractList(Object? payload, {required String key}) {

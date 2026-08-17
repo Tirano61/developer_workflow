@@ -641,7 +641,10 @@ class _OptionalEntitySelector<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final options = _resolvedOptions;
     final labelsById = {for (final option in options) option.id: option.label};
-    final selectedLabels = selectedIds.map((id) => labelsById[id] ?? id).where((label) => label.trim().isNotEmpty).toList(growable: false);
+    final selectedLabels = selectedIds
+        .map((id) => labelsById[id] ?? 'Elemento sin nombre')
+        .where((label) => label.trim().isNotEmpty)
+        .toList(growable: false);
     final scheme = Theme.of(context).colorScheme;
     final error = errorMessage?.trim();
 
@@ -674,7 +677,13 @@ class _OptionalEntitySelector<T> extends StatelessWidget {
             Wrap(
               spacing: AppSpacing.sm,
               runSpacing: 6,
-              children: [for (final id in selectedIds) _SelectedItemChip(label: labelsById[id] ?? id, onDeleted: enabled ? () => onToggle(id, false) : null)],
+              children: [
+                for (final id in selectedIds)
+                  _SelectedItemChip(
+                    label: labelsById[id] ?? 'Elemento sin nombre',
+                    onDeleted: enabled ? () => onToggle(id, false) : null,
+                  ),
+              ],
             ),
           if (selectedIds.isNotEmpty) ...[const SizedBox(height: AppSpacing.sm), Text('${selectedIds.length} seleccionado${selectedIds.length == 1 ? '' : 's'}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted))],
         ],
@@ -820,8 +829,7 @@ class _OptionalEntitySelector<T> extends StatelessWidget {
 
   String _resolvedLabel(T item) {
     final label = labelOf(item).trim();
-    final id = _resolvedId(item);
-    return label.isEmpty ? id : label;
+    return label.isEmpty ? 'Elemento sin nombre' : label;
   }
 }
 

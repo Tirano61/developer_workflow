@@ -7,7 +7,7 @@ class GetTags {
 
   final TagRepository _repository;
 
-  Future<Result<List<Tag>>> call() {
-    return _repository.getTags();
+  Future<Result<List<Tag>>> call({bool includeInactive = false}) {
+    return _repository.getTags(includeInactive: includeInactive);
   }
 }

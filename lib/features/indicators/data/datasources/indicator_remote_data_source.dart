@@ -1,16 +1,24 @@
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/network/rest_client.dart';
+import '../../../applications/data/models/application_model.dart';
 import '../models/indicator_model.dart';
 
 abstract class IndicatorRemoteDataSource {
-  Future<List<IndicatorModel>> getIndicators();
+  Future<List<IndicatorModel>> getIndicators({bool includeInactive = false});
 
   Future<IndicatorModel> getIndicatorById(String id);
 
   Future<IndicatorModel> createIndicator(IndicatorModel model);
 
   Future<IndicatorModel> updateIndicator(IndicatorModel model);
+
+  Future<IndicatorModel> setIndicatorActive({
+    required String id,
+    required bool active,
+  });
+
+  Future<List<ApplicationModel>> getApplicationsByIndicatorId(String indicatorId);
 }
 
 class IndicatorRemoteDataSourceImpl implements IndicatorRemoteDataSource {
@@ -20,8 +28,12 @@ class IndicatorRemoteDataSourceImpl implements IndicatorRemoteDataSource {
   final RestClient _restClient;
 
   @override
-  Future<List<IndicatorModel>> getIndicators() async {
-    final response = await _restClient.get<Object?>(ApiEndpoints.indicators);
+  Future<List<IndicatorModel>> getIndicators({
+    bool includeInactive = false,
+  }) async {
+    final response = await _restClient.get<Object?>(
+      includeInactive ? ApiEndpoints.indicatorsAll() : ApiEndpoints.indicators,
+    );
     final list = _extractList(response.data, key: 'indicators');
 
     return list
@@ -65,6 +77,43 @@ class IndicatorRemoteDataSourceImpl implements IndicatorRemoteDataSource {
     );
     final map = _extractEntityMap(response.data, key: 'indicator');
     return IndicatorModel.fromJson(map);
+  }
+
+  @override
+  Future<IndicatorModel> setIndicatorActive({
+    required String id,
+    required bool active,
+  }) async {
+    final normalizedId = id.trim();
+    if (normalizedId.isEmpty) {
+      throw const ValidationException('Se requiere un id de Indicator.');
+    }
+
+    final response = await _restClient.patch<Object?>(
+      ApiEndpoints.indicatorActiveById(Uri.encodeComponent(normalizedId)),
+      body: <String, dynamic>{'active': active},
+    );
+    final map = _extractEntityMap(response.data, key: 'indicator');
+    return IndicatorModel.fromJson(map);
+  }
+
+  @override
+  Future<List<ApplicationModel>> getApplicationsByIndicatorId(
+    String indicatorId,
+  ) async {
+    final normalizedId = indicatorId.trim();
+    if (normalizedId.isEmpty) {
+      throw const ValidationException('Se requiere un id de Indicator.');
+    }
+
+    final response = await _restClient.get<Object?>(
+      ApiEndpoints.indicatorApplicationsById(Uri.encodeComponent(normalizedId)),
+    );
+
+    final list = _extractList(response.data, key: 'applications');
+    return list
+        .map((item) => ApplicationModel.fromJson(_extractMap(item)))
+        .toList(growable: false);
   }
 
   List<dynamic> _extractList(Object? payload, {required String key}) {
