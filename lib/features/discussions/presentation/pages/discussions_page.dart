@@ -2,16 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/router/app_router.dart';
+import '../../../../core/theme/app_breakpoints.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/app_radius.dart';
+import '../../../../core/theme/app_spacing.dart';
+import '../../../applications/presentation/bloc/application_bloc.dart';
+import '../../../applications/presentation/bloc/application_event.dart';
+import '../../../applications/presentation/bloc/application_state.dart';
+import '../../../applications/domain/entities/application.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
-import '../../../notifications/presentation/bloc/notification_state.dart';
+import '../../../indicators/domain/entities/indicator.dart';
+import '../../../indicators/presentation/bloc/indicator_bloc.dart';
+import '../../../indicators/presentation/bloc/indicator_event.dart';
+import '../../../indicators/presentation/bloc/indicator_state.dart';
 import '../../../notifications/presentation/bloc/notification_bloc.dart';
+import '../../../notifications/presentation/bloc/notification_state.dart';
+import '../../../tags/presentation/bloc/tag_bloc.dart';
+import '../../../tags/presentation/bloc/tag_event.dart';
+import '../../../tags/presentation/bloc/tag_state.dart';
+import '../../../tags/domain/entities/tag.dart';
 import '../../domain/entities/discussion.dart';
 import '../../domain/entities/discussion_filters.dart';
 import '../bloc/discussion_bloc.dart';
 import '../bloc/discussion_event.dart';
 import '../bloc/discussion_state.dart';
 import '../widgets/discussion_board_card.dart';
-import 'discussion_detail_page.dart';
 import 'discussion_route_args.dart';
 
 enum _DiscussionViewFilter { all, mine, assignedToMe }
@@ -24,12 +39,14 @@ class DiscussionsPage extends StatefulWidget {
 }
 
 class _DiscussionsPageState extends State<DiscussionsPage> {
-  static const double _desktopBreakpoint = 980;
-
   _DiscussionViewFilter _viewFilter = _DiscussionViewFilter.all;
   bool _unreadOnly = false;
   DiscussionRecordStatus _mobileStatus = DiscussionRecordStatus.newDiscussion;
-  String? _selectedDiscussionId;
+
+  DiscussionType? _advancedType;
+  Set<String> _applicationFilterIds = <String>{};
+  Set<String> _indicatorFilterIds = <String>{};
+  Set<String> _tagFilterIds = <String>{};
 
   @override
   void initState() {
@@ -38,7 +55,8 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
       if (!mounted) {
         return;
       }
-      _requestDiscussions(forDesktop: _isDesktop(context));
+      _loadFilterCatalogs();
+      _requestDiscussions(silent: false);
     });
   }
 
@@ -47,29 +65,14 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     final isDeveloper = _isDeveloper(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Develop Workflow'),
-        actions: [
-          IconButton(
-            tooltip: 'Nueva discussion',
-            onPressed: () async {
-              final changed = await Navigator.pushNamed(
-                context,
-                AppRoutes.discussionCreate,
-              );
-
-              if (!context.mounted) {
-                return;
-              }
-
-              if (changed == true) {
-                _requestDiscussions(forDesktop: _isDesktop(context));
-              }
-            },
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Develop Workflow')),
+      floatingActionButton: _isCompactLayout(context)
+          ? FloatingActionButton.extended(
+              onPressed: _openDiscussionCreate,
+              icon: const Icon(Icons.add),
+              label: const Text('Nueva'),
+            )
+          : null,
       body: MultiBlocListener(
         listeners: [
           BlocListener<NotificationBloc, NotificationState>(
@@ -81,10 +84,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
                 return;
               }
 
-              _requestDiscussions(
-                forDesktop: _isDesktop(context),
-                silent: true,
-              );
+              _requestDiscussions(silent: true);
             },
           ),
         ],
@@ -103,29 +103,61 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
                 const ClearDiscussionOperationMessageEvent(),
               );
             }
-
-            final selected = state.selectedDiscussion;
-            if (selected?.id != null && selected!.id!.isNotEmpty) {
-              setState(() {
-                _selectedDiscussionId = selected.id;
-              });
-            }
           },
           builder: (context, state) {
             return LayoutBuilder(
               builder: (context, constraints) {
-                final isDesktop = constraints.maxWidth >= _desktopBreakpoint;
+                final isKanban = constraints.maxWidth >= AppBreakpoints.kanban;
 
                 if (state.status == DiscussionStatus.loading &&
                     state.discussions.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                if (isDesktop) {
-                  return _buildDesktopBoard(context, state, isDeveloper);
+                if (state.status == DiscussionStatus.error &&
+                    state.discussions.isEmpty) {
+                  return _buildInitialError();
                 }
 
-                return _buildMobileBoard(context, state, isDeveloper);
+                final grouped = _groupByStatus(state.discussions);
+                final mobileItems = _itemsForStatus(grouped, _mobileStatus);
+
+                return Column(
+                  children: [
+                    _buildTopSection(
+                      context,
+                      isDeveloper: isDeveloper,
+                      isKanban: isKanban,
+                    ),
+                    if (state.status == DiscussionStatus.loading &&
+                        state.discussions.isNotEmpty)
+                      const LinearProgressIndicator(minHeight: 2),
+                    if (!isKanban)
+                      _buildMobileStatusSelector(
+                        grouped: grouped,
+                        currentStatus: _mobileStatus,
+                        onStatusSelected: (status) {
+                          setState(() {
+                            _mobileStatus = status;
+                          });
+                        },
+                      ),
+                    Expanded(
+                      child: isKanban
+                          ? _buildKanbanBoard(
+                              grouped: grouped,
+                              state: state,
+                              isDeveloper: isDeveloper,
+                            )
+                          : _buildMobileList(
+                              items: mobileItems,
+                              state: state,
+                              isDeveloper: isDeveloper,
+                              currentStatus: _mobileStatus,
+                            ),
+                    ),
+                  ],
+                );
               },
             );
           },
@@ -134,285 +166,301 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     );
   }
 
-  Widget _buildDesktopBoard(
-    BuildContext context,
-    DiscussionState state,
-    bool isDeveloper,
-  ) {
-    final grouped = _groupByStatus(state.discussions);
-
-    return Row(
-      children: [
-        Expanded(
-          flex: 3,
-          child: Column(
-            children: [
-              _buildBoardTopBar(context, isDeveloper: isDeveloper),
-              if (state.status == DiscussionStatus.loading)
-                const LinearProgressIndicator(),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Row(
-                    children: [
-                      _buildKanbanColumn(
-                        context,
-                        title: 'Entrada',
-                        status: DiscussionRecordStatus.newDiscussion,
-                        items:
-                            grouped[DiscussionRecordStatus.newDiscussion] ??
-                            const <Discussion>[],
-                        isDeveloper: isDeveloper,
-                        state: state,
-                      ),
-                      _buildKanbanColumn(
-                        context,
-                        title: 'Revision',
-                        status: DiscussionRecordStatus.review,
-                        items: grouped[DiscussionRecordStatus.review] ??
-                            const <Discussion>[],
-                        isDeveloper: isDeveloper,
-                        state: state,
-                      ),
-                      _buildKanbanColumn(
-                        context,
-                        title: 'Trabajando',
-                        status: DiscussionRecordStatus.inProgress,
-                        items:
-                            grouped[DiscussionRecordStatus.inProgress] ??
-                            const <Discussion>[],
-                        isDeveloper: isDeveloper,
-                        state: state,
-                      ),
-                      _buildKanbanColumn(
-                        context,
-                        title: 'Resuelto',
-                        status: DiscussionRecordStatus.resolved,
-                        items: grouped[DiscussionRecordStatus.resolved] ??
-                            const <Discussion>[],
-                        isDeveloper: isDeveloper,
-                        state: state,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(width: 1, color: Theme.of(context).dividerColor),
-        Expanded(
-          flex: 2,
-          child: _selectedDiscussionId == null
-              ? const Center(child: Text('Selecciona una discussion'))
-              : DiscussionDetailPage(
-                  discussionId: _selectedDiscussionId!,
-                  embedded: true,
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildKanbanColumn(
+  Widget _buildTopSection(
     BuildContext context, {
-    required String title,
-    required DiscussionRecordStatus status,
-    required List<Discussion> items,
     required bool isDeveloper,
-    required DiscussionState state,
+    required bool isKanban,
   }) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Card(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: Text(
-                  '$title (${items.length})',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: items.isEmpty
-                    ? const Center(child: Text('Sin discussions'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(8),
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final discussion = items[index];
-                          return DiscussionBoardCard(
-                            discussion: discussion,
-                            isDeveloper: isDeveloper,
-                            isBusy: _isDiscussionBusy(state, discussion.id),
-                            onOpen: () => _openDiscussionFromBoard(
-                              discussionId: discussion.id,
-                              desktopSelection: true,
-                            ),
-                            onManageAssignments: () =>
-                                _openAssignmentsDialog(discussion),
-                            onAssignToMe: () => _assignToMe(discussion),
-                            onChangeStatus: (nextStatus) =>
-                                _changeDiscussionStatus(discussion, nextStatus),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).colorScheme.outline),
         ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.sm,
+              children: [
+                FilterChip(
+                  label: const Text('Todas'),
+                  selected: _viewFilter == _DiscussionViewFilter.all,
+                  onSelected: (_) => _setViewFilter(_DiscussionViewFilter.all),
+                ),
+                FilterChip(
+                  label: const Text('Mis discussions'),
+                  selected: _viewFilter == _DiscussionViewFilter.mine,
+                  onSelected: (_) => _setViewFilter(_DiscussionViewFilter.mine),
+                ),
+                if (isDeveloper)
+                  FilterChip(
+                    label: const Text('Asignadas a mi'),
+                    selected: _viewFilter == _DiscussionViewFilter.assignedToMe,
+                    onSelected: (_) =>
+                        _setViewFilter(_DiscussionViewFilter.assignedToMe),
+                  ),
+                FilterChip(
+                  label: const Text('No leidas'),
+                  selected: _unreadOnly,
+                  onSelected: (selected) {
+                    setState(() {
+                      _unreadOnly = selected;
+                    });
+                    _requestDiscussions();
+                  },
+                ),
+                OutlinedButton.icon(
+                  onPressed: _openAdvancedFilters,
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  label: const Text('Filtros'),
+                ),
+                if (_hasAdvancedFilters)
+                  OutlinedButton(
+                    onPressed: _clearAdvancedFilters,
+                    child: const Text('Limpiar filtros'),
+                  ),
+                IconButton(
+                  tooltip: 'Recargar',
+                  onPressed: _requestDiscussions,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+          ),
+          if (isKanban) ...[
+            const SizedBox(width: AppSpacing.sm),
+            ElevatedButton.icon(
+              onPressed: _openDiscussionCreate,
+              icon: const Icon(Icons.add),
+              label: const Text('Nueva discusion'),
+            ),
+          ],
+        ],
       ),
     );
   }
 
-  Widget _buildMobileBoard(
-    BuildContext context,
-    DiscussionState state,
-    bool isDeveloper,
-  ) {
-    return Column(
-      children: [
-        _buildBoardTopBar(context, isDeveloper: isDeveloper),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: DropdownButtonFormField<DiscussionRecordStatus>(
-            initialValue: _mobileStatus,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              labelText: 'Estado',
-            ),
-            items: DiscussionRecordStatus.values
-                .where((status) => status != DiscussionRecordStatus.unknown)
-                .map(
-                  (status) => DropdownMenuItem<DiscussionRecordStatus>(
-                    value: status,
-                    child: Text(_statusLabel(status)),
-                  ),
-                )
-                .toList(growable: false),
-            onChanged: (status) {
-              if (status == null) {
-                return;
-              }
-
-              setState(() {
-                _mobileStatus = status;
-              });
-
-              _requestDiscussions(forDesktop: false);
-            },
-          ),
-        ),
-        if (state.status == DiscussionStatus.loading)
-          const LinearProgressIndicator(),
-        Expanded(
-          child: state.discussions.isEmpty
-              ? const Center(child: Text('Sin discussions para este estado.'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(10),
-                  itemCount: state.discussions.length,
-                  itemBuilder: (context, index) {
-                    final discussion = state.discussions[index];
-                    return DiscussionBoardCard(
-                      discussion: discussion,
-                      isDeveloper: isDeveloper,
-                      isBusy: _isDiscussionBusy(state, discussion.id),
-                      onOpen: () => _openDiscussionFromBoard(
-                        discussionId: discussion.id,
-                        desktopSelection: false,
-                      ),
-                      onManageAssignments: () => _openAssignmentsDialog(discussion),
-                      onAssignToMe: () => _assignToMe(discussion),
-                      onChangeStatus: (nextStatus) =>
-                          _changeDiscussionStatus(discussion, nextStatus),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBoardTopBar(
-    BuildContext context, {
+  Widget _buildKanbanBoard({
+    required Map<DiscussionRecordStatus, List<Discussion>> grouped,
+    required DiscussionState state,
     required bool isDeveloper,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  ChoiceChip(
-                    label: const Text('Todas'),
-                    selected: _viewFilter == _DiscussionViewFilter.all,
-                    onSelected: (_) => _setViewFilter(_DiscussionViewFilter.all),
-                  ),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('Creadas por mi'),
-                    selected: _viewFilter == _DiscussionViewFilter.mine,
-                    onSelected: (_) => _setViewFilter(_DiscussionViewFilter.mine),
-                  ),
-                  if (isDeveloper) ...[
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: const Text('Asignadas a mi'),
-                      selected: _viewFilter == _DiscussionViewFilter.assignedToMe,
-                      onSelected: (_) =>
-                          _setViewFilter(_DiscussionViewFilter.assignedToMe),
-                    ),
-                  ],
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    label: const Text('No leidas'),
-                    selected: _unreadOnly,
-                    onSelected: (selected) {
-                      setState(() {
-                        _unreadOnly = selected;
-                      });
-                      _requestDiscussions(forDesktop: _isDesktop(context));
-                    },
-                  ),
-                ],
-              ),
+          _DwKanbanColumn(
+            title: 'Entrada',
+            accent: context.semanticColors.statusNew,
+            items: _itemsForStatus(
+              grouped,
+              DiscussionRecordStatus.newDiscussion,
             ),
+            state: state,
+            isDeveloper: isDeveloper,
+            onOpen: _openDiscussionFromBoard,
+            onAssignToMe: _assignToMe,
+            onManageAssignments: _openAssignmentsDialog,
+            onChangeStatus: _changeDiscussionStatus,
           ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Recargar',
-            onPressed: () => _requestDiscussions(forDesktop: _isDesktop(context)),
-            icon: const Icon(Icons.refresh),
+          const SizedBox(width: AppSpacing.sm),
+          _DwKanbanColumn(
+            title: 'Revision',
+            accent: context.semanticColors.statusReview,
+            items: _itemsForStatus(grouped, DiscussionRecordStatus.review),
+            state: state,
+            isDeveloper: isDeveloper,
+            onOpen: _openDiscussionFromBoard,
+            onAssignToMe: _assignToMe,
+            onManageAssignments: _openAssignmentsDialog,
+            onChangeStatus: _changeDiscussionStatus,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _DwKanbanColumn(
+            title: 'Trabajando',
+            accent: context.semanticColors.statusInProgress,
+            items: _itemsForStatus(grouped, DiscussionRecordStatus.inProgress),
+            state: state,
+            isDeveloper: isDeveloper,
+            onOpen: _openDiscussionFromBoard,
+            onAssignToMe: _assignToMe,
+            onManageAssignments: _openAssignmentsDialog,
+            onChangeStatus: _changeDiscussionStatus,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _DwKanbanColumn(
+            title: 'Resuelto',
+            accent: context.semanticColors.statusResolved,
+            items: _itemsForStatus(grouped, DiscussionRecordStatus.resolved),
+            state: state,
+            isDeveloper: isDeveloper,
+            onOpen: _openDiscussionFromBoard,
+            onAssignToMe: _assignToMe,
+            onManageAssignments: _openAssignmentsDialog,
+            onChangeStatus: _changeDiscussionStatus,
           ),
         ],
       ),
     );
   }
 
-  void _setViewFilter(_DiscussionViewFilter filter) {
-    if (_viewFilter == filter) {
+  Widget _buildMobileStatusSelector({
+    required Map<DiscussionRecordStatus, List<Discussion>> grouped,
+    required DiscussionRecordStatus currentStatus,
+    required ValueChanged<DiscussionRecordStatus> onStatusSelected,
+  }) {
+    final entries = <(DiscussionRecordStatus, String)>[
+      (DiscussionRecordStatus.newDiscussion, 'Entrada'),
+      (DiscussionRecordStatus.review, 'Revision'),
+      (DiscussionRecordStatus.inProgress, 'Trabajando'),
+      (DiscussionRecordStatus.resolved, 'Resuelto'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.xs,
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final entry in entries) ...[
+              ChoiceChip(
+                label: Text(
+                  '${entry.$2} ${_itemsForStatus(grouped, entry.$1).length}',
+                ),
+                selected: currentStatus == entry.$1,
+                onSelected: (_) => onStatusSelected(entry.$1),
+              ),
+              if (entry != entries.last) const SizedBox(width: AppSpacing.sm),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileList({
+    required List<Discussion> items,
+    required DiscussionState state,
+    required bool isDeveloper,
+    required DiscussionRecordStatus currentStatus,
+  }) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(
+          'Sin discussions en ${_statusLabel(currentStatus).toLowerCase()}.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final discussion = items[index];
+        return DiscussionBoardCard(
+          discussion: discussion,
+          isDeveloper: isDeveloper,
+          isBusy: _isDiscussionBusy(state, discussion.id),
+          onOpen: () => _openDiscussionFromBoard(discussionId: discussion.id),
+          onManageAssignments: () => _openAssignmentsDialog(discussion),
+          onAssignToMe: () => _assignToMe(discussion),
+          onChangeStatus: (nextStatus) =>
+              _changeDiscussionStatus(discussion, nextStatus),
+        );
+      },
+    );
+  }
+
+  Widget _buildInitialError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded),
+            const SizedBox(height: AppSpacing.sm),
+            const Text('No se pudieron cargar las discussions.'),
+            const SizedBox(height: AppSpacing.md),
+            ElevatedButton.icon(
+              onPressed: _requestDiscussions,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDiscussionCreate() async {
+    final changed = await Navigator.pushNamed(
+      context,
+      AppRoutes.discussionCreate,
+    );
+
+    if (!mounted) {
       return;
     }
 
-    setState(() {
-      _viewFilter = filter;
-    });
-
-    _requestDiscussions(forDesktop: _isDesktop(context));
+    if (changed == true) {
+      _requestDiscussions();
+    }
   }
 
-  void _requestDiscussions({required bool forDesktop, bool silent = false}) {
-    final filters = _buildFilters(forDesktop: forDesktop);
+  void _setViewFilter(_DiscussionViewFilter selected) {
+    final nextFilter = _viewFilter == selected
+        ? _DiscussionViewFilter.all
+        : selected;
+
+    setState(() {
+      _viewFilter = nextFilter;
+    });
+
+    _requestDiscussions();
+  }
+
+  void _requestDiscussions({bool silent = false}) {
     context.read<DiscussionBloc>().add(
-      LoadDiscussionsEvent(filters: filters, silent: silent),
+      LoadDiscussionsEvent(filters: _buildFilters(), silent: silent),
     );
+  }
+
+  void _loadFilterCatalogs() {
+    final appBloc = context.read<ApplicationBloc>();
+    if (appBloc.state.applications.isEmpty &&
+        appBloc.state.status != ApplicationStatus.loading) {
+      appBloc.add(const LoadApplicationsEvent());
+    }
+
+    final indicatorBloc = context.read<IndicatorBloc>();
+    if (indicatorBloc.state.indicators.isEmpty &&
+        indicatorBloc.state.status != IndicatorStatus.loading) {
+      indicatorBloc.add(const LoadIndicatorsEvent());
+    }
+
+    final tagBloc = context.read<TagBloc>();
+    if (tagBloc.state.tags.isEmpty &&
+        tagBloc.state.status != TagStatus.loading) {
+      tagBloc.add(const LoadTagsEvent());
+    }
   }
 
   bool _shouldRefreshKanbanForNotification(NotificationState state) {
@@ -431,16 +479,126 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     return true;
   }
 
-  DiscussionFilters _buildFilters({required bool forDesktop}) {
-    final statusFilter = forDesktop ? null : _mobileStatus;
-
+  DiscussionFilters _buildFilters() {
     return DiscussionFilters(
       page: 1,
       limit: 100,
-      status: statusFilter,
+      type: _advancedType,
+      applicationIds: _sortedIds(_applicationFilterIds),
+      indicatorIds: _sortedIds(_indicatorFilterIds),
+      tagIds: _sortedIds(_tagFilterIds),
       mine: _viewFilter == _DiscussionViewFilter.mine,
       assignedToMe: _viewFilter == _DiscussionViewFilter.assignedToMe,
       unread: _unreadOnly ? true : null,
+    );
+  }
+
+  bool get _hasAdvancedFilters {
+    return _advancedType != null ||
+        _applicationFilterIds.isNotEmpty ||
+        _indicatorFilterIds.isNotEmpty ||
+        _tagFilterIds.isNotEmpty;
+  }
+
+  void _clearAdvancedFilters() {
+    setState(() {
+      _advancedType = null;
+      _applicationFilterIds = <String>{};
+      _indicatorFilterIds = <String>{};
+      _tagFilterIds = <String>{};
+    });
+    _requestDiscussions();
+  }
+
+  Future<void> _openAdvancedFilters() async {
+    _loadFilterCatalogs();
+
+    final applications = context.read<ApplicationBloc>().state.applications;
+    final indicators = context.read<IndicatorBloc>().state.indicators;
+    final tags = context.read<TagBloc>().state.tags;
+
+    final tempResult = await (_isCompactLayout(context)
+        ? _showAdvancedFiltersBottomSheet(
+            applications: applications,
+            indicators: indicators,
+            tags: tags,
+          )
+        : _showAdvancedFiltersDialog(
+            applications: applications,
+            indicators: indicators,
+            tags: tags,
+          ));
+
+    if (!mounted || tempResult == null) {
+      return;
+    }
+
+    setState(() {
+      _advancedType = tempResult.type;
+      _applicationFilterIds = tempResult.applicationIds;
+      _indicatorFilterIds = tempResult.indicatorIds;
+      _tagFilterIds = tempResult.tagIds;
+    });
+
+    _requestDiscussions();
+  }
+
+  Future<_AdvancedFilterSelection?> _showAdvancedFiltersDialog({
+    required List<Application> applications,
+    required List<Indicator> indicators,
+    required List<Tag> tags,
+  }) {
+    return showDialog<_AdvancedFilterSelection>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.xl,
+            vertical: AppSpacing.lg,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: _AdvancedFiltersContent(
+            initialType: _advancedType,
+            initialApplicationIds: _applicationFilterIds,
+            initialIndicatorIds: _indicatorFilterIds,
+            initialTagIds: _tagFilterIds,
+            applications: applications,
+            indicators: indicators,
+            tags: tags,
+            onClose: (selection) => Navigator.pop(dialogContext, selection),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<_AdvancedFilterSelection?> _showAdvancedFiltersBottomSheet({
+    required List<Application> applications,
+    required List<Indicator> indicators,
+    required List<Tag> tags,
+  }) {
+    return showModalBottomSheet<_AdvancedFilterSelection>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+            ),
+            child: _AdvancedFiltersContent(
+              initialType: _advancedType,
+              initialApplicationIds: _applicationFilterIds,
+              initialIndicatorIds: _indicatorFilterIds,
+              initialTagIds: _tagFilterIds,
+              applications: applications,
+              indicators: indicators,
+              tags: tags,
+              onClose: (selection) => Navigator.pop(sheetContext, selection),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -465,13 +623,20 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     return grouped;
   }
 
+  List<Discussion> _itemsForStatus(
+    Map<DiscussionRecordStatus, List<Discussion>> grouped,
+    DiscussionRecordStatus status,
+  ) {
+    return grouped[status] ?? const <Discussion>[];
+  }
+
   bool _isDeveloper(BuildContext context) {
     final user = context.read<AuthBloc>().state.session?.user;
     return user?.isDeveloper ?? false;
   }
 
-  bool _isDesktop(BuildContext context) {
-    return MediaQuery.sizeOf(context).width >= _desktopBreakpoint;
+  bool _isCompactLayout(BuildContext context) {
+    return MediaQuery.sizeOf(context).width < AppBreakpoints.compact;
   }
 
   bool _isDiscussionBusy(DiscussionState state, String? discussionId) {
@@ -483,24 +648,12 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
         (state.isUpdatingAssignments || state.isUpdatingStatus);
   }
 
-  Future<void> _openDiscussionFromBoard({
-    required String? discussionId,
-    required bool desktopSelection,
-  }) async {
+  Future<void> _openDiscussionFromBoard({required String? discussionId}) async {
     if (discussionId == null || discussionId.isEmpty) {
       return;
     }
 
     context.read<DiscussionBloc>().add(MarkDiscussionAsReadEvent(discussionId));
-
-    if (desktopSelection) {
-      setState(() {
-        _selectedDiscussionId = discussionId;
-      });
-      context.read<DiscussionBloc>().add(SelectDiscussionEvent(discussionId));
-      context.read<DiscussionBloc>().add(LoadDiscussionEvent(discussionId));
-      return;
-    }
 
     final changed = await Navigator.pushNamed(
       context,
@@ -513,7 +666,7 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     }
 
     if (changed == true) {
-      _requestDiscussions(forDesktop: false);
+      _requestDiscussions();
     }
   }
 
@@ -527,7 +680,10 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     }
 
     context.read<DiscussionBloc>().add(
-      ChangeDiscussionStatusEvent(discussionId: discussionId, status: nextStatus),
+      ChangeDiscussionStatusEvent(
+        discussionId: discussionId,
+        status: nextStatus,
+      ),
     );
   }
 
@@ -671,5 +827,359 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _DwKanbanColumn extends StatelessWidget {
+  const _DwKanbanColumn({
+    required this.title,
+    required this.accent,
+    required this.items,
+    required this.state,
+    required this.isDeveloper,
+    required this.onOpen,
+    required this.onManageAssignments,
+    required this.onAssignToMe,
+    required this.onChangeStatus,
+  });
+
+  final String title;
+  final Color accent;
+  final List<Discussion> items;
+  final DiscussionState state;
+  final bool isDeveloper;
+  final Future<void> Function({required String? discussionId}) onOpen;
+  final Future<void> Function(Discussion discussion) onManageAssignments;
+  final void Function(Discussion discussion) onAssignToMe;
+  final void Function(Discussion discussion, DiscussionRecordStatus nextStatus)
+  onChangeStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: Theme.of(context).colorScheme.outline),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                AppSpacing.sm,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: accent,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  Text(
+                    '${items.length}',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleSmall?.copyWith(color: accent),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: Theme.of(context).colorScheme.outline),
+            Expanded(
+              child: items.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Sin discussions',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final discussion = items[index];
+                        return DiscussionBoardCard(
+                          discussion: discussion,
+                          isDeveloper: isDeveloper,
+                          isBusy: _isBusy(state, discussion.id),
+                          onOpen: () => onOpen(discussionId: discussion.id),
+                          onManageAssignments: () =>
+                              onManageAssignments(discussion),
+                          onAssignToMe: () => onAssignToMe(discussion),
+                          onChangeStatus: (nextStatus) =>
+                              onChangeStatus(discussion, nextStatus),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isBusy(DiscussionState state, String? discussionId) {
+    if (discussionId == null || discussionId.isEmpty) {
+      return false;
+    }
+
+    return state.operationDiscussionId == discussionId &&
+        (state.isUpdatingAssignments || state.isUpdatingStatus);
+  }
+}
+
+class _AdvancedFilterSelection {
+  const _AdvancedFilterSelection({
+    required this.type,
+    required this.applicationIds,
+    required this.indicatorIds,
+    required this.tagIds,
+  });
+
+  final DiscussionType? type;
+  final Set<String> applicationIds;
+  final Set<String> indicatorIds;
+  final Set<String> tagIds;
+}
+
+class _AdvancedFiltersContent extends StatefulWidget {
+  const _AdvancedFiltersContent({
+    required this.initialType,
+    required this.initialApplicationIds,
+    required this.initialIndicatorIds,
+    required this.initialTagIds,
+    required this.applications,
+    required this.indicators,
+    required this.tags,
+    required this.onClose,
+  });
+
+  final DiscussionType? initialType;
+  final Set<String> initialApplicationIds;
+  final Set<String> initialIndicatorIds;
+  final Set<String> initialTagIds;
+  final List<Application> applications;
+  final List<Indicator> indicators;
+  final List<Tag> tags;
+  final ValueChanged<_AdvancedFilterSelection?> onClose;
+
+  @override
+  State<_AdvancedFiltersContent> createState() =>
+      _AdvancedFiltersContentState();
+}
+
+class _AdvancedFiltersContentState extends State<_AdvancedFiltersContent> {
+  late DiscussionType? _type;
+  late Set<String> _applicationIds;
+  late Set<String> _indicatorIds;
+  late Set<String> _tagIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _type = widget.initialType;
+    _applicationIds = Set<String>.from(widget.initialApplicationIds);
+    _indicatorIds = Set<String>.from(widget.initialIndicatorIds);
+    _tagIds = Set<String>.from(widget.initialTagIds);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 700, maxHeight: 700),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Filtros avanzados',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Tipo', style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: AppSpacing.sm),
+                    Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Todos'),
+                          selected: _type == null,
+                          onSelected: (_) => setState(() => _type = null),
+                        ),
+                        for (final type in DiscussionType.values.where(
+                          (value) => value != DiscussionType.unknown,
+                        ))
+                          ChoiceChip(
+                            label: Text(_typeLabel(type)),
+                            selected: _type == type,
+                            onSelected: (_) => setState(() => _type = type),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    _buildSelectorSection(
+                      title: 'Aplicaciones',
+                      items: widget.applications
+                          .where((item) => item.id != null)
+                          .toList(growable: false),
+                      selectedIds: _applicationIds,
+                      idBuilder: (item) => item.id,
+                      labelBuilder: (item) => item.name,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    _buildSelectorSection(
+                      title: 'Indicadores',
+                      items: widget.indicators
+                          .where((item) => item.id != null)
+                          .toList(growable: false),
+                      selectedIds: _indicatorIds,
+                      idBuilder: (item) => item.id,
+                      labelBuilder: (item) => item.name,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    _buildSelectorSection(
+                      title: 'Tags',
+                      items: widget.tags
+                          .where((item) => item.id != null)
+                          .toList(growable: false),
+                      selectedIds: _tagIds,
+                      idBuilder: (item) => item.id,
+                      labelBuilder: (item) => item.name,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _type = null;
+                      _applicationIds.clear();
+                      _indicatorIds.clear();
+                      _tagIds.clear();
+                    });
+                  },
+                  child: const Text('Limpiar'),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => widget.onClose(null),
+                  child: const Text('Cancelar'),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                ElevatedButton(
+                  onPressed: () {
+                    widget.onClose(
+                      _AdvancedFilterSelection(
+                        type: _type,
+                        applicationIds: Set<String>.from(_applicationIds),
+                        indicatorIds: Set<String>.from(_indicatorIds),
+                        tagIds: Set<String>.from(_tagIds),
+                      ),
+                    );
+                  },
+                  child: const Text('Aplicar'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectorSection<T>({
+    required String title,
+    required List<T> items,
+    required Set<String> selectedIds,
+    required String? Function(T item) idBuilder,
+    required String Function(T item) labelBuilder,
+  }) {
+    if (items.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Sin datos disponibles.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: AppSpacing.sm),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            for (final item in items)
+              FilterChip(
+                label: Text(labelBuilder(item)),
+                selected: selectedIds.contains(idBuilder(item)),
+                onSelected: (selected) {
+                  final id = idBuilder(item);
+                  if (id == null || id.isEmpty) {
+                    return;
+                  }
+
+                  setState(() {
+                    if (selected) {
+                      selectedIds.add(id);
+                    } else {
+                      selectedIds.remove(id);
+                    }
+                  });
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _typeLabel(DiscussionType type) {
+    switch (type) {
+      case DiscussionType.error:
+        return 'Error';
+      case DiscussionType.idea:
+        return 'Idea';
+      case DiscussionType.improvement:
+        return 'Mejora';
+      case DiscussionType.question:
+        return 'Consulta';
+      case DiscussionType.unknown:
+        return 'Otro';
+    }
   }
 }
