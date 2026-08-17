@@ -45,6 +45,13 @@ class DiscussionBoardCard extends StatelessWidget {
               Row(
                 children: [
                   _DwTypeChip(type: discussion.type),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text (
+                    "Creador: ",
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  _DwCreatorPill(creator: discussion.createdBy),
                   const Spacer(),
                   _DwUnreadIndicator(isUnread: discussion.isUnread),
                 ],
@@ -204,6 +211,91 @@ class _DwUnreadIndicator extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _DwCreatorPill extends StatelessWidget {
+  const _DwCreatorPill({required this.creator});
+
+  final DiscussionCreator? creator;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.secondary;
+    final name = _displayName(creator);
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 170),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.xs,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        border: Border.all(color: accent),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 9,
+            backgroundColor: accent.withValues(alpha: 0.18),
+            child: Text(
+              _initials(name),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Flexible(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _displayName(DiscussionCreator? creator) {
+    final fullName = creator?.fullName?.trim();
+    if (fullName != null && fullName.isNotEmpty) {
+      return fullName;
+    }
+
+    final email = creator?.email?.trim();
+    if (email != null && email.isNotEmpty) {
+      return email;
+    }
+
+    final id = creator?.id.trim();
+    if (id != null && id.isNotEmpty) {
+      return id;
+    }
+
+    return 'Sin creador';
+  }
+
+  static String _initials(String fullName) {
+    final parts = fullName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (parts.isEmpty) {
+      return '?';
+    }
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    final first = parts.first.substring(0, 1).toUpperCase();
+    final last = parts.last.substring(0, 1).toUpperCase();
+    return '$first$last';
   }
 }
 

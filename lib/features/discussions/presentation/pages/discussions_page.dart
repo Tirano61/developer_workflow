@@ -540,6 +540,9 @@ class _DiscussionsPageState extends State<DiscussionsPage> {
     const supportedTypes = <String>{
       'DISCUSSION_CREATED',
       'DISCUSSION_MESSAGE',
+      'DISCUSSION_MESSAGE_UPDATED',
+      'DISCUSSION_MESSAGE_DELETED',
+      'DISCUSSION_CONTEXT_CHANGED',
       'DISCUSSION_STATUS_CHANGED',
       'DISCUSSION_ASSIGNMENT_CHANGED',
     };

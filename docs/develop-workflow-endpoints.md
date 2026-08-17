@@ -358,8 +358,12 @@ Autenticacion:
 - Exclusiones: nunca se envia push al usuario actor que genero el evento.
 - Si un usuario activo no tiene devices, no se envia y no genera error.
 - Todos los valores del objeto `data` se envian como string.
+- Prioridad Android: `high` para visible y silent sync.
+- Infraestructura centralizada:
+  - `VISIBLE`: incluye `notification { title, body }` + `data`.
+  - `DATA_ONLY`: incluye solo `data` (sin `notification`).
 
-Eventos implementados:
+Eventos visibles implementados:
 
 1) Discussion creada
 - Trigger: `POST /develop-workflow/discussions`
@@ -441,8 +445,56 @@ Eventos implementados:
 }
 ```
 
+Eventos silent sync implementados (data-only):
+
+5) Mensaje editado
+- Trigger: `PATCH /develop-workflow/discussions/:discussionId/messages/:messageId`
+- Condicion: solo si la edicion fue exitosa.
+- Payload:
+```json
+{
+  "data": {
+    "type": "DISCUSSION_MESSAGE_UPDATED",
+    "discussionId": "UUID",
+    "messageId": "UUID"
+  }
+}
+```
+
+6) Mensaje eliminado
+- Trigger: `DELETE /develop-workflow/discussions/:discussionId/messages/:messageId`
+- Condicion: se emite solo despues de eliminacion completa (Cloudinary si aplica + DB).
+- Payload:
+```json
+{
+  "data": {
+    "type": "DISCUSSION_MESSAGE_DELETED",
+    "discussionId": "UUID",
+    "messageId": "UUID"
+  }
+}
+```
+
+7) Contexto de discussion actualizado (applications/indicators)
+- Triggers:
+  - `POST /develop-workflow/discussions/:id/applications`
+  - `DELETE /develop-workflow/discussions/:id/applications/:applicationId`
+  - `POST /develop-workflow/discussions/:id/indicators`
+  - `DELETE /develop-workflow/discussions/:id/indicators/:indicatorId`
+  - `PATCH /develop-workflow/discussions/:id` (cuando cambia `applicationIds` y/o `indicatorIds`)
+- Condicion: solo cuando hay cambio real en contexto.
+- Payload:
+```json
+{
+  "data": {
+    "type": "DISCUSSION_CONTEXT_CHANGED",
+    "discussionId": "UUID"
+  }
+}
+```
+
 Notas operativas:
-- El envio push no revierte operaciones funcionales (discussion, message, status o assignment) si Firebase falla.
+- El envio push/silent sync no revierte operaciones funcionales (discussion, message, status, assignment o contexto) si Firebase falla.
 - Se mantiene la limpieza automatica de tokens invalidos de Fase 8A.
 - No se actualiza `lastReadAt` por enviar push; read/unread sigue independiente.
 

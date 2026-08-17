@@ -1,5 +1,12 @@
 enum NotificationStatus { initial, initializing, ready, error }
 
+enum NotificationSyncType {
+  none,
+  discussionAndMessages,
+  messagesOnly,
+  contextOnly,
+}
+
 class NotificationState {
   const NotificationState({
     this.status = NotificationStatus.initial,
@@ -16,6 +23,9 @@ class NotificationState {
     this.activeDiscussionId,
     this.notificationDiscussionId,
     this.notificationEventVersion = 0,
+    this.syncType = NotificationSyncType.none,
+    this.syncDiscussionId,
+    this.syncVersion = 0,
     this.refreshDiscussionId,
     this.refreshRequestVersion = 0,
     this.errorMessage = '',
@@ -35,6 +45,9 @@ class NotificationState {
   final String? activeDiscussionId;
   final String? notificationDiscussionId;
   final int notificationEventVersion;
+  final NotificationSyncType syncType;
+  final String? syncDiscussionId;
+  final int syncVersion;
   final String? refreshDiscussionId;
   final int refreshRequestVersion;
   final String errorMessage;
@@ -54,6 +67,9 @@ class NotificationState {
     String? activeDiscussionId,
     String? notificationDiscussionId,
     int? notificationEventVersion,
+    NotificationSyncType? syncType,
+    String? syncDiscussionId,
+    int? syncVersion,
     String? refreshDiscussionId,
     int? refreshRequestVersion,
     String? errorMessage,
@@ -63,6 +79,7 @@ class NotificationState {
     bool clearOpenDiscussionId = false,
     bool clearActiveDiscussionId = false,
     bool clearNotificationDiscussionId = false,
+    bool clearSyncDiscussionId = false,
     bool clearRefreshDiscussionId = false,
   }) {
     return NotificationState(
@@ -94,6 +111,11 @@ class NotificationState {
           : notificationDiscussionId ?? this.notificationDiscussionId,
         notificationEventVersion:
           notificationEventVersion ?? this.notificationEventVersion,
+        syncType: syncType ?? this.syncType,
+        syncDiscussionId: clearSyncDiscussionId
+          ? null
+          : syncDiscussionId ?? this.syncDiscussionId,
+        syncVersion: syncVersion ?? this.syncVersion,
         refreshDiscussionId: clearRefreshDiscussionId
           ? null
           : refreshDiscussionId ?? this.refreshDiscussionId,
