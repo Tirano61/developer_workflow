@@ -308,25 +308,32 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _buildTypeChip(discussion.type),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: _buildStatusControl(
-                  discussion: discussion,
-                  isDeveloper: isDeveloper,
-                  disabled: statusBusy || messageState.isSending,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Canal:',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  _buildStatusControl(
+                    discussion: discussion,
+                    isDeveloper: isDeveloper,
+                    disabled: statusBusy || messageState.isSending,
+                  ),
+                ],
               ),
-              const SizedBox(width: AppSpacing.sm),
               Text(
                 _formatShortDateTime(discussion.updatedAt ?? discussion.createdAt),
                 style: Theme.of(context).textTheme.labelSmall,
               ),
               if (widget.embedded) ...[
-                const SizedBox(width: AppSpacing.xs),
                 IconButton(
                   tooltip: 'Cerrar panel',
                   visualDensity: VisualDensity.compact,
@@ -382,11 +389,27 @@ class _DiscussionDetailPageState extends State<DiscussionDetailPage>
                       disabled: assigneesBusy,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      'Creado por ${_creatorDisplayName(discussion.createdBy)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall,
+                    Wrap(
+                      spacing: AppSpacing.xs,
+                      runSpacing: AppSpacing.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Creado por:',
+                          style: Theme.of(context).textTheme.labelSmall,
+                        ),
+                        _buildPersonPill(
+                          name: _creatorDisplayName(discussion.createdBy),
+                          borderColor: Theme.of(context).colorScheme.outline,
+                          avatarBackground: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          avatarTextColor:
+                              Theme.of(context).textTheme.labelSmall?.color,
+                          textColor:
+                              Theme.of(context).textTheme.labelSmall?.color,
+                        ),
+                      ],
                     ),
                   ],
                 ),
