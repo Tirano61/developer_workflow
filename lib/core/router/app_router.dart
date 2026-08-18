@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../features/applications/presentation/bloc/application_bloc.dart';
 import '../../features/applications/presentation/pages/applications_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/branding/presentation/pages/branding_splash_page.dart';
 import '../../features/discussions/domain/entities/discussion.dart';
 import '../../features/discussions/presentation/bloc/discussion_bloc.dart';
 import '../../features/discussions/presentation/pages/discussion_detail_page.dart';
@@ -26,6 +27,7 @@ class AppRoutes {
   const AppRoutes._();
 
   static const String home = '/';
+  static const String splash = '/splash';
   static const String login = '/login';
   static const String applications = '/applications';
   static const String indicators = '/indicators';
@@ -39,6 +41,10 @@ class AppRoutes {
 class AppRouter {
   const AppRouter._();
 
+  static final ValueNotifier<bool> isBrandingSplashActive = ValueNotifier<bool>(
+    false,
+  );
+
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
   static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
@@ -48,6 +54,11 @@ class AppRouter {
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
+      case AppRoutes.splash:
+        return MaterialPageRoute<void>(
+          settings: settings,
+          builder: (_) => const BrandingSplashPage(),
+        );
       case AppRoutes.login:
         return _buildLoginRoute(settings);
       case AppRoutes.applications:

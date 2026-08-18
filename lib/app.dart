@@ -84,6 +84,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 previous.status != current.status ||
                 previous.infoMessage != current.infoMessage,
             listener: (context, state) {
+              if (AppRouter.isBrandingSplashActive.value) {
+                return;
+              }
+
               context.read<NotificationBloc>().add(
                 NotificationAuthStateChangedEvent(
                   isAuthenticated: state.isAuthenticated,
@@ -207,7 +211,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           navigatorKey: AppRouter.navigatorKey,
           scaffoldMessengerKey: AppRouter.scaffoldMessengerKey,
           navigatorObservers: [AppRouter.routeObserver],
-          initialRoute: AppRoutes.login,
+          initialRoute: AppRoutes.splash,
           onGenerateRoute: AppRouter.onGenerateRoute,
         ),
       ),
