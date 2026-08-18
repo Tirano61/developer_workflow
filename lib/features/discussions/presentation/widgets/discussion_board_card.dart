@@ -46,6 +46,8 @@ class DiscussionBoardCard extends StatelessWidget {
                 children: [
                   _DwTypeChip(type: discussion.type),
                   const Spacer(),
+                  _DwCreatorMeta(creator: discussion.createdBy),
+                  const SizedBox(width: AppSpacing.sm),
                   _DwUnreadIndicator(isUnread: discussion.isUnread),
                 ],
               ),
@@ -79,8 +81,6 @@ class DiscussionBoardCard extends StatelessWidget {
                         _relativeActivity(discussion),
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
-                      const SizedBox(height: 2),
-                      _DwCreatorMeta(creator: discussion.createdBy),
                     ],
                   ),
                 ],
@@ -222,13 +222,26 @@ class _DwCreatorMeta extends StatelessWidget {
     final name = _displayName(creator);
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 170),
-      child: Text(
-        'Creado por $name',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: TextAlign.right,
-        style: Theme.of(context).textTheme.labelSmall,
+      constraints: const BoxConstraints(maxWidth: 200),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Creado por:',
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Flexible(
+            child: _DwPersonPill(
+              name: name,
+              borderColor: Theme.of(context).colorScheme.outline,
+              backgroundColor: AppColors.surfaceElevated,
+              avatarBackground: AppColors.surface,
+              avatarTextColor: AppColors.textSecondary,
+              textColor: AppColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -252,6 +265,67 @@ class _DwCreatorMeta extends StatelessWidget {
     return 'Sin creador';
   }
 
+}
+
+class _DwPersonPill extends StatelessWidget {
+  const _DwPersonPill({
+    required this.name,
+    required this.borderColor,
+    required this.backgroundColor,
+    required this.avatarBackground,
+    required this.avatarTextColor,
+    required this.textColor,
+  });
+
+  final String name;
+  final Color borderColor;
+  final Color backgroundColor;
+  final Color avatarBackground;
+  final Color avatarTextColor;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 130),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadius.chip),
+        color: backgroundColor,
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircleAvatar(
+            radius: 9,
+            backgroundColor: avatarBackground,
+            child: Text(
+              _DwAssigneeChips._initials(name),
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: avatarTextColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: textColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DwContextChips extends StatelessWidget {
@@ -329,46 +403,13 @@ class _DwAssigneeChips extends StatelessWidget {
         for (final assignee in visible)
           Tooltip(
             message: assignee.fullName,
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 130),
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: AppSpacing.xs,
-              ),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppRadius.chip),
-                color: AppColors.surfaceElevated,
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircleAvatar(
-                    radius: 9,
-                    backgroundColor: AppColors.surface,
-                    child: Text(
-                      _initials(assignee.fullName),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  Flexible(
-                    child: Text(
-                      assignee.fullName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            child: _DwPersonPill(
+              name: assignee.fullName,
+              borderColor: Theme.of(context).colorScheme.outline,
+              backgroundColor: AppColors.surfaceElevated,
+              avatarBackground: AppColors.surface,
+              avatarTextColor: AppColors.textSecondary,
+              textColor: AppColors.textPrimary,
             ),
           ),
         if (overflow > 0)
